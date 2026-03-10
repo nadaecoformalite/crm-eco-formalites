@@ -429,12 +429,31 @@ function DossierDetail({dossier, onClose, onUpdate, currentUser, toast}){
   const [note,setNote]=useState("");
   const [editing,setEditing]=useState(false);
   const [d,setD]=useState({...dossier});
+  const [scanning,setScanning]=useState(false);
   const fRef=useRef();
   const save=(u)=>{const nd={...d,...u,updated:new Date().toISOString().split("T")[0]};setD(nd);onUpdate(nd);toast("Mis a jour","s");};
   const addNote=()=>{if(!note.trim())return;save({notes:[...d.notes,{author:currentUser.name,date:new Date().toISOString().split("T")[0],text:note}]});setNote("");};
-  const handleFile=(files)=>{
+  
+  const handleFile=async(files)=>{
     const newDocs=Array.from(files).map(f=>({name:f.name,size:Math.round(f.size/1024)+" KB",date:new Date().toISOString().split("T")[0]}));
-    save({docs:[...d.docs,...newDocs]});
+    const updatedDossier={docs:[...d.docs,...newDocs]};
+    
+    // Chercher les PDF et extraire le DP automatiquement
+    const pdfFiles=Array.from(files).filter(f=>f.name.endsWith(".pdf"));
+    if(pdfFiles.length>0 && !d.dp_number){
+      setScanning(true);
+      for(const pdfFile of pdfFiles){
+        const dp=await extractDPFromPDF(pdfFile);
+        if(dp){
+          updatedDossier.dp_number=dp;
+          toast("N° DP detecte automatiquement : "+dp,"s");
+          break;
+        }
+      }
+      setScanning(false);
+    }
+    
+    save(updatedDossier);
     toast(newDocs.length+" fichier(s) ajoute(s)","s");
   };
   return (
@@ -492,12 +511,17 @@ function DossierDetail({dossier, onClose, onUpdate, currentUser, toast}){
               <div className="upload-z" onClick={()=>fRef.current.click()}
                 onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="#4f46e5";}}
                 onDragLeave={e=>{e.currentTarget.style.borderColor="";}}
-                onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="";handleFile(e.dataTransfer.files);}}>
-                <SI n="upload" s={30} c="#4f46e5"/>
-                <p style={{color:"#374151",marginTop:8,fontSize:14,fontWeight:600}}>Glisser-deposer ou cliquer</p>
-                <p style={{color:"#9ca3af",fontSize:12,marginTop:3}}>PDF, JPG, PNG, DOCX...</p>
+                onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="";handleFile(e.dataTransfer.files);}}
+                style={{opacity:scanning?0.6:1,pointerEvents:scanning?"none":"auto"}}>
+                {scanning?<div style={{display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:10}}><span className="spin" style={{fontSize:24}}>⟳</span><p style={{color:"#4f46e5",fontSize:13,fontWeight:600}}>Lecture du PDF et extraction du N° DP...</p></div>:(
+                  <>
+                    <SI n="upload" s={30} c="#4f46e5"/>
+                    <p style={{color:"#374151",marginTop:8,fontSize:14,fontWeight:600}}>Glisser-deposer ou cliquer</p>
+                    <p style={{color:"#9ca3af",fontSize:12,marginTop:3}}>PDF, JPG, PNG, DOCX...</p>
+                  </>
+                )}
               </div>
-              <input ref={fRef} type="file" multiple style={{display:"none"}} onChange={e=>handleFile(e.target.files)}/>
+              <input ref={fRef} type="file" multiple style={{display:"none"}} onChange={e=>handleFile(e.target.files)} disabled={scanning}/>
               {!d.docs.length&&<p style={{color:"#9ca3af",fontSize:13,textAlign:"center",padding:24}}>Aucun document</p>}
               {d.docs.map((doc,i)=>(
                 <div className="doc-item" key={i}>
