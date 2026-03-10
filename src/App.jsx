@@ -7,7 +7,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
 ).toString();
 
 const EMPLOYEES = ["Nada","Sarah","David","Jimmy","Sonia","Harry","Farah","Fabienne","Ounza","Yael"];
-const WORK_TYPES = ["ITE","PAC","Panneaux Solaires","Systeme Solaire Combine","Menuiseries Exterieures"];
+const WORK_TYPES = ["Panneaux Solaires","ITE","PAC","Systeme Solaire Combine","Menuiseries Exterieures","Abri Jardin","Pergola","Carport"];
 const STATUSES = [
   { key:"nouveau", label:"Nouveau", color:"#6366f1" },
   { key:"en_cours", label:"En cours", color:"#d97706" },
@@ -16,16 +16,16 @@ const STATUSES = [
   { key:"refuse", label:"Refuse", color:"#dc2626" },
   { key:"termine", label:"Termine", color:"#0891b2" },
 ];
-const DOSSIER_TYPES = ["Demande Prealable Raccordement","CONSUEL","Recuperation TVA"];
+const DOSSIER_TYPES = ["Demande Prealable","Raccordement","Consuel","Recuperation TVA"];
 const USERS = [
   { id:1, name:"Super Admin", email:"superadmin@crm.fr", password:"admin2024", role:"superadmin", initials:"SA" },
   { id:2, name:"Admin", email:"admin@crm.fr", password:"admin123", role:"admin", initials:"AD" },
   { id:3, name:"Sarah", email:"sarah@crm.fr", password:"sarah123", role:"employee", initials:"SR" },
 ];
 const MOCK = [
-  { id:"DOS-2024-001", client:"Martin Dupont", email:"martin@example.com", phone:"06 12 34 56 78", address:"12 rue des Lilas, 75011 Paris", dp_number:"DP 075 111 24 00001", works:[{type:"PAC",dossier_type:"Demande Prealable Raccordement"},{type:"ITE",dossier_type:"CONSUEL"}], status:"en_cours", assignee:"Sarah", created:"2024-11-15", updated:"2024-12-01", paid:false, amount:1200, docs:[{name:"Devis_Martin.pdf",size:"245 KB",date:"2024-11-15"}], notes:[{author:"Sarah",date:"2024-11-20",text:"Dossier en attente de validation EDF."}], client_access:true },
+  { id:"DOS-2024-001", client:"Martin Dupont", email:"martin@example.com", phone:"06 12 34 56 78", address:"12 rue des Lilas, 75011 Paris", dp_number:"DP 075 111 24 00001", works:[{type:"PAC",dossier_type:"Demande Prealable"},{type:"ITE",dossier_type:"Consuel"}], status:"en_cours", assignee:"Sarah", created:"2024-11-15", updated:"2024-12-01", paid:false, amount:1200, docs:[{name:"Devis_Martin.pdf",size:"245 KB",date:"2024-11-15"}], notes:[{author:"Sarah",date:"2024-11-20",text:"Dossier en attente de validation EDF."}], client_access:true },
   { id:"DOS-2024-002", client:"Emilie Rousseau", email:"emilie@example.com", phone:"06 98 76 54 32", address:"5 avenue Victor Hugo, 69001 Lyon", dp_number:"DP 069 011 24 00042", works:[{type:"Panneaux Solaires",dossier_type:"Recuperation TVA"}], status:"valide", assignee:"Nada", created:"2024-10-08", updated:"2024-11-30", paid:true, amount:800, docs:[{name:"Facture_Panneaux.pdf",size:"180 KB",date:"2024-10-10"}], notes:[{author:"Nada",date:"2024-11-30",text:"Dossier valide."}], client_access:false },
-  { id:"DOS-2024-003", client:"Jean-Pierre Moreau", email:"jp@example.com", phone:"07 11 22 33 44", address:"28 chemin du Moulin, 13300 Salon-de-Provence", dp_number:"DP 013 055 24 00078", works:[{type:"Menuiseries Exterieures",dossier_type:"CONSUEL"}], status:"nouveau", assignee:"Jimmy", created:"2024-12-05", updated:"2024-12-05", paid:false, amount:2500, docs:[], notes:[], client_access:true },
+  { id:"DOS-2024-003", client:"Jean-Pierre Moreau", email:"jp@example.com", phone:"07 11 22 33 44", address:"28 chemin du Moulin, 13300 Salon-de-Provence", dp_number:"DP 013 055 24 00078", works:[{type:"Menuiseries Exterieures",dossier_type:"Consuel"}], status:"nouveau", assignee:"Jimmy", created:"2024-12-05", updated:"2024-12-05", paid:false, amount:2500, docs:[], notes:[], client_access:true },
 ];
 
 async function extractDPFromPDF(file) {
@@ -312,14 +312,14 @@ function Dashboard({dossiers}){
 }
 
 function DossierForm({initial, onSave, onClose, currentUser}){
-  const empty={client:"",email:"",phone:"",address:"",dp_number:"",works:[{type:"PAC",dossier_type:"Demande Prealable Raccordement"}],status:"nouveau",assignee:EMPLOYEES[0],paid:false,amount:0,client_access:false,notes:[],docs:[]};
+  const empty={client:"",email:"",phone:"",address:"",dp_number:"",works:[],status:"nouveau",assignee:EMPLOYEES[0],paid:false,amount:0,client_access:false,notes:[],docs:[]};
   const [f,setF]=useState(initial?{...initial}:empty);
   const [scanning,setScanning]=useState(false);
   const [dpDetected,setDpDetected]=useState(null);
   const pdfRef=useRef();
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const setW=(i,k,v)=>{const w=[...f.works];w[i]={...w[i],[k]:v};set("works",w);};
-  const addW=()=>set("works",[...f.works,{type:"ITE",dossier_type:"Demande Prealable Raccordement"}]);
+  const addW=()=>set("works",[...f.works,{type:"ITE",dossier_type:"Demande Prealable"}]);
   const rmW=i=>set("works",f.works.filter((_,j)=>j!==i));
 
   const handlePDFScan = async (file) => {
@@ -391,24 +391,56 @@ function DossierForm({initial, onSave, onClose, currentUser}){
             <div className="fg full"><label>Adresse</label><input value={f.address} onChange={e=>set("address",e.target.value)}/></div>
           </div>
 
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-            <p style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase"}}>Travaux</p>
-            <button className="btn btn-s btn-sm" onClick={addW}><SI n="plus" s={13}/>Ajouter</button>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <p style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase"}}>Type de travaux</p>
           </div>
-          {f.works.map((w,i)=>(
-            <div key={i} style={{display:"flex",gap:8,marginBottom:8,padding:"10px 12px",background:"#f8f9fc",borderRadius:8,border:"1px solid #e2e6f0",alignItems:"center"}}>
-              <div style={{flex:1,display:"flex",flexDirection:"column",gap:6}}>
-                <select value={w.type} onChange={e=>setW(i,"type",e.target.value)}>{WORK_TYPES.map(t=><option key={t}>{t}</option>)}</select>
-                <select value={w.dossier_type} onChange={e=>setW(i,"dossier_type",e.target.value)}>{DOSSIER_TYPES.map(t=><option key={t}>{t}</option>)}</select>
-              </div>
-              {f.works.length>1&&<button className="bic" onClick={()=>rmW(i)}><SI n="x" s={13}/></button>}
-            </div>
-          ))}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16,background:"#f8f9fc",padding:12,borderRadius:8,border:"1px solid #e2e6f0"}}>
+            {WORK_TYPES.map(t=>{
+              const isSelected = f.works.some(w=>w.type===t);
+              return (
+                <label key={t} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,fontWeight:500}}>
+                  <input type="checkbox" checked={isSelected} onChange={e=>{
+                    if(e.target.checked){
+                      const formalites = Array.from(new Set(f.works.map(w=>w.dossier_type)));
+                      if(formalites.length===0) formalites.push("Demande Prealable");
+                      set("works",[...f.works,...formalites.map(d=>({type:t,dossier_type:d}))]);
+                    } else {
+                      set("works",f.works.filter(w=>w.type!==t));
+                    }
+                  }}/>
+                  {t}
+                </label>
+              );
+            })}
+          </div>
+
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <p style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase"}}>Type de formalités</p>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16,background:"#f8f9fc",padding:12,borderRadius:8,border:"1px solid #e2e6f0"}}>
+            {DOSSIER_TYPES.map(d=>{
+              const isSelected = f.works.some(w=>w.dossier_type===d);
+              return (
+                <label key={d} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,fontWeight:500}}>
+                  <input type="checkbox" checked={isSelected} onChange={e=>{
+                    if(e.target.checked){
+                      const types = Array.from(new Set(f.works.map(w=>w.type)));
+                      if(types.length===0) types.push("PAC");
+                      set("works",[...f.works,...types.map(t=>({type:t,dossier_type:d}))]);
+                    } else {
+                      set("works",f.works.filter(w=>w.dossier_type!==d));
+                    }
+                  }}/>
+                  {d}
+                </label>
+              );
+            })}
+          </div>
 
           <div className="form-grid" style={{marginTop:14}}>
             <div className="fg"><label>Statut</label><select value={f.status} onChange={e=>set("status",e.target.value)}>{STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}</select></div>
             <div className="fg"><label>Responsable</label><select value={f.assignee} onChange={e=>set("assignee",e.target.value)}>{EMPLOYEES.map(e=><option key={e}>{e}</option>)}</select></div>
-            <div className="fg"><label>Montant (€)</label><input type="number" value={f.amount} onChange={e=>set("amount",Number(e.target.value))}/></div>
+            {currentUser.role!=="admin"&&<div className="fg"><label>Montant (€)</label><input type="number" value={f.amount} onChange={e=>set("amount",Number(e.target.value))}/></div>}
             <div className="fg" style={{gap:10,justifyContent:"flex-end"}}>
               <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:13,fontWeight:500}}><input type="checkbox" checked={f.paid} onChange={e=>set("paid",e.target.checked)}/>Paye</label>
               <label style={{display:"flex",alignItems:"center",gap:7,cursor:"pointer",fontSize:13,fontWeight:500}}><input type="checkbox" checked={f.client_access} onChange={e=>set("client_access",e.target.checked)}/>Acces client</label>
@@ -497,11 +529,63 @@ function DossierDetail({dossier, onClose, onUpdate, currentUser, toast}){
                 ))}</div>
                 <div>
                   <div style={{marginBottom:14}}>
-                    <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:".07em",marginBottom:6}}>Travaux</div>
-                    {d.works.map((w,i)=><div key={i} style={{marginBottom:6}}><span className="chip" style={{marginRight:4}}>{w.type}</span><span className="chip chip-d">{w.dossier_type}</span></div>)}
+                    <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",letterSpacing:".07em",marginBottom:10}}>Travaux</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                      {/* Demande Prealable */}
+                      {d.works.some(w=>w.dossier_type==="Demande Prealable")&&(
+                        <div style={{background:"#eef2ff",border:"1px solid #4f46e5",borderRadius:6,padding:"6px 10px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:10,fontWeight:700,color:"#4f46e5"}}>Demande Prealable</span>
+                          <span style={{fontSize:12,color:"#4f46e5"}}>✓</span>
+                        </div>
+                      )}
+                      
+                      {/* Raccordement */}
+                      {d.works.some(w=>w.dossier_type==="Raccordement")&&(
+                        <div style={{background:"#fef3c7",border:"1px solid #d97706",borderRadius:6,padding:"6px 10px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:10,fontWeight:700,color:"#d97706"}}>Raccordement</span>
+                          <span style={{fontSize:12,color:"#d97706"}}>✓</span>
+                        </div>
+                      )}
+                      
+                      {/* PAC */}
+                      {d.works.some(w=>w.type==="PAC")&&(
+                        <div style={{background:"#dcfce7",border:"1px solid #059669",borderRadius:6,padding:"6px 10px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:10,fontWeight:700,color:"#059669"}}>PAC</span>
+                          <span style={{fontSize:12,color:"#059669"}}>✓</span>
+                        </div>
+                      )}
+                      
+                      {/* ITE */}
+                      {d.works.some(w=>w.type==="ITE")&&(
+                        <div style={{background:"#fce7f3",border:"1px solid #ec4899",borderRadius:6,padding:"6px 10px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:10,fontWeight:700,color:"#ec4899"}}>ITE</span>
+                          <span style={{fontSize:12,color:"#ec4899"}}>✓</span>
+                        </div>
+                      )}
+                      
+                      {/* Consuel */}
+                      {d.works.some(w=>w.dossier_type==="Consuel")&&(
+                        <div style={{background:"#dbeafe",border:"1px solid #0284c7",borderRadius:6,padding:"6px 10px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:10,fontWeight:700,color:"#0284c7"}}>Consuel</span>
+                          <span style={{fontSize:12,color:"#0284c7"}}>✓</span>
+                        </div>
+                      )}
+
+                      {/* TVA */}
+                      {d.works.some(w=>w.dossier_type==="Recuperation TVA")&&(
+                        <div style={{background:"#fae8ff",border:"1px solid #a855f7",borderRadius:6,padding:"6px 10px",display:"flex",alignItems:"center",gap:5}}>
+                          <span style={{fontSize:10,fontWeight:700,color:"#a855f7"}}>Récupération TVA</span>
+                          <span style={{fontSize:12,color:"#a855f7"}}>✓</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",marginBottom:3}}>Montant</div>
-                  <div style={{fontSize:22,fontWeight:800,color:d.paid?"#059669":"#d97706"}}>{d.amount.toLocaleString("fr-FR")} €</div>
+                  {currentUser.role!=="admin"&&(
+                    <>
+                      <div style={{fontSize:11,fontWeight:700,color:"#9ca3af",textTransform:"uppercase",marginBottom:3}}>Montant</div>
+                      <div style={{fontSize:22,fontWeight:800,color:d.paid?"#059669":"#d97706"}}>{d.amount.toLocaleString("fr-FR")} €</div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -550,14 +634,21 @@ function DossierDetail({dossier, onClose, onUpdate, currentUser, toast}){
           )}
           {tab==="paiement"&&(
             <div>
-              <div style={{background:d.paid?"#ecfdf5":"#fffbeb",border:"1px solid "+(d.paid?"#a7f3d0":"#fcd34d"),borderRadius:10,padding:18,display:"flex",alignItems:"center",gap:16,marginBottom:18,flexWrap:"wrap"}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,color:"#6b7280",marginBottom:4}}>Montant</div>
-                  <div style={{fontWeight:800,fontSize:28,color:d.paid?"#059669":"#d97706"}}>{d.amount.toLocaleString("fr-FR")} €</div>
-                  <div style={{marginTop:8}}><SBadge status={d.paid?"valide":"en_attente"}/></div>
+              {currentUser.role!=="admin"&&(
+                <div style={{background:d.paid?"#ecfdf5":"#fffbeb",border:"1px solid "+(d.paid?"#a7f3d0":"#fcd34d"),borderRadius:10,padding:18,display:"flex",alignItems:"center",gap:16,marginBottom:18,flexWrap:"wrap"}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,color:"#6b7280",marginBottom:4}}>Montant</div>
+                    <div style={{fontWeight:800,fontSize:28,color:d.paid?"#059669":"#d97706"}}>{d.amount.toLocaleString("fr-FR")} €</div>
+                    <div style={{marginTop:8}}><SBadge status={d.paid?"valide":"en_attente"}/></div>
+                  </div>
+                  {!d.paid&&<button className="btn btn-p" onClick={()=>toast("Lien envoye a "+d.client,"i")}><SI n="mail" s={14}/>Envoyer lien client</button>}
                 </div>
-                {!d.paid&&<button className="btn btn-p" onClick={()=>toast("Lien envoye a "+d.client,"i")}><SI n="mail" s={14}/>Envoyer lien client</button>}
-              </div>
+              )}
+              {currentUser.role==="admin"&&(
+                <div style={{background:"#f3f4f6",border:"1px solid #e5e7eb",borderRadius:10,padding:18,marginBottom:18}}>
+                  <div style={{fontSize:13,color:"#6b7280",fontStyle:"italic"}}>Accès administrateur : Montant non visible</div>
+                </div>
+              )}
               {currentUser.role==="superadmin"&&(
                 <div style={{display:"flex",gap:10}}>
                   <button className="btn btn-g" disabled={d.paid} style={{opacity:d.paid?.5:1}} onClick={()=>{save({paid:true});toast("Paiement valide","s");}}><SI n="check" s={14}/>Marquer paye</button>
@@ -731,7 +822,7 @@ function Import({setDossiers, toast}){
   };
   const confirm=()=>{
     const now=new Date().toISOString().split("T")[0];
-    const nd=preview.map((row,i)=>({id:"IMP-"+Date.now()+"-"+i,client:row.client||row.nom||("Client "+(i+1)),email:row.email||"",phone:row.phone||row.tel||"",address:row.address||row.adresse||"",dp_number:row.dp_number||"",works:[{type:row.type_travaux||"ITE",dossier_type:"Demande Prealable Raccordement"}],status:"nouveau",assignee:EMPLOYEES[0],paid:false,amount:Number(row.amount||0),created:now,updated:now,docs:[],notes:[],client_access:false,client_token:null}));
+    const nd=preview.map((row,i)=>({id:"IMP-"+Date.now()+"-"+i,client:row.client||row.nom||("Client "+(i+1)),email:row.email||"",phone:row.phone||row.tel||"",address:row.address||row.adresse||"",dp_number:row.dp_number||"",works:[{type:row.type_travaux||"ITE",dossier_type:"Demande Prealable"}],status:"nouveau",assignee:EMPLOYEES[0],paid:false,amount:Number(row.amount||0),created:now,updated:now,docs:[],notes:[],client_access:false,client_token:null}));
     setDossiers(p=>[...nd,...p]);setPreview([]);toast(nd.length+" dossiers importes","s");
   };
   return (
