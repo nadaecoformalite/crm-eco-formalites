@@ -604,6 +604,18 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
   const fRef=useRef();
   const save=u=>{const nd={...d,...u,updated:new Date().toISOString().split("T")[0]};setD(nd);onUpdate(nd);};
 
+  // Résoudre l'email mairie : champ dédié → scan commentaires
+  const resolveMairieEmail=(dossier)=>{
+    if(dossier.mairie_email) return {email:dossier.mairie_email,source:"champ dédié"};
+    const re=/[\w.+%-]+@[\w-]+\.[a-z]{2,}/i;
+    for(const c of (dossier.comments||[])){
+      const m=(c.text||"").match(re);
+      if(m) return {email:m[0],source:`commentaire du ${c.date} (${c.author})`};
+    }
+    return null;
+  };
+  const mairieResolved=resolveMairieEmail(d);
+
   const doSelfAssign=()=>{
     save({assignee:currentUser.name,assign_by:currentUser.name,assign_at:new Date().toISOString()});
     toast(currentUser.name+" s'est attribué ce dossier","s");
@@ -750,22 +762,67 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
           }}
         />}
 
-        {tab==="commentaires"&&<div>
-          <div className="sec">Ajouter un commentaire</div>
-          <div style={{display:"flex",gap:8,marginBottom:18}}>
-            <textarea value={cmt} onChange={e=>setCmt(e.target.value)} placeholder="Message envoye par email au client..." style={{flex:1,minHeight:70}}/>
-            <button className="btn btn-p btn-sm" style={{alignSelf:"flex-end"}} onClick={addCmt}><Ic n="msg" s={12}/>Envoyer</button>
-          </div>
-          <div className="sec">Historique</div>
-          {[...(d.comments||[])].reverse().map((c,i)=><div key={i} className={"cmt"+(c.from_client?" cli":"")}>
-            <div style={{fontSize:10,color:"var(--tx4)",marginBottom:4,display:"flex",gap:7,alignItems:"center"}}>
-              <strong style={{color:c.from_client?"var(--gr)":"var(--or)"}}>{c.author}</strong>
-              <span>{c.date}</span>
-              {c.from_client&&<span style={{background:"var(--gr-l)",color:"var(--gr)",fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3}}>CLIENT</span>}
+        {tab==="commentaires"&&<div style={{display:"grid",gridTemplateColumns:"1fr 270px",gap:20}}>
+          {/* ── Colonne gauche : commentaires ── */}
+          <div>
+            <div className="sec">Ajouter un commentaire</div>
+            <div style={{display:"flex",gap:8,marginBottom:18}}>
+              <textarea value={cmt} onChange={e=>setCmt(e.target.value)} placeholder="Message envoye par email au client..." style={{flex:1,minHeight:70}}/>
+              <button className="btn btn-p btn-sm" style={{alignSelf:"flex-end"}} onClick={addCmt}><Ic n="msg" s={12}/>Envoyer</button>
             </div>
-            <div style={{fontSize:12,lineHeight:1.6}}>{c.text}</div>
-          </div>)}
-          {!(d.comments||[]).length&&<p style={{color:"var(--tx4)",fontSize:12,textAlign:"center",padding:18}}>Aucun commentaire</p>}
+            <div className="sec">Historique</div>
+            {[...(d.comments||[])].reverse().map((c,i)=><div key={i} className={"cmt"+(c.from_client?" cli":"")}>
+              <div style={{fontSize:10,color:"var(--tx4)",marginBottom:4,display:"flex",gap:7,alignItems:"center"}}>
+                <strong style={{color:c.from_client?"var(--gr)":"var(--or)"}}>{c.author}</strong>
+                <span>{c.date}</span>
+                {c.from_client&&<span style={{background:"var(--gr-l)",color:"var(--gr)",fontSize:9,fontWeight:700,padding:"1px 5px",borderRadius:3}}>CLIENT</span>}
+              </div>
+              <div style={{fontSize:12,lineHeight:1.6}}>{c.text}</div>
+            </div>)}
+            {!(d.comments||[]).length&&<p style={{color:"var(--tx4)",fontSize:12,textAlign:"center",padding:18}}>Aucun commentaire</p>}
+          </div>
+
+          {/* ── Colonne droite : Contact mairie ── */}
+          <div>
+            <div style={{background:"#eef2ff",border:"1.5px solid #c7d2fe",borderRadius:"var(--rl)",padding:14}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#6366f1",textTransform:"uppercase",letterSpacing:".06em",marginBottom:12}}>🏛️ Contact mairie</div>
+
+              {/* Email mairie */}
+              <div className="fg" style={{marginBottom:10}}>
+                <label className="lbl">Email mairie
+                  <span style={{marginLeft:6,fontSize:9,color:"#6366f1",background:"#e0e7ff",padding:"1px 5px",borderRadius:6,fontWeight:700}}>relances auto</span>
+                </label>
+                <input type="email" value={d.mairie_email||""} placeholder="urbanisme@mairie-xxx.fr"
+                  onChange={e=>save({mairie_email:e.target.value})}
+                  style={{fontSize:12}}/>
+              </div>
+
+              {/* Notes contact mairie */}
+              <div className="fg" style={{marginBottom:10}}>
+                <label className="lbl">Notes / Interlocuteur</label>
+                <textarea value={d.mairie_contact_note||""} placeholder="Nom, téléphone, horaires..."
+                  onChange={e=>save({mairie_contact_note:e.target.value})}
+                  style={{minHeight:60,fontSize:12,resize:"vertical"}}/>
+              </div>
+
+              {/* Email résolu — source affichée */}
+              <div style={{background:"var(--bg2)",border:"1.5px solid var(--bd)",borderRadius:"var(--r)",padding:"8px 10px"}}>
+                <div style={{fontSize:9,fontWeight:700,color:"var(--tx4)",textTransform:"uppercase",marginBottom:4}}>Email utilisé pour les relances</div>
+                {mairieResolved
+                  ?<>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1A4A8A",wordBreak:"break-all"}}>{mairieResolved.email}</div>
+                    <div style={{fontSize:10,color:"var(--tx4)",marginTop:3}}>
+                      {mairieResolved.source==="champ dédié"
+                        ?<span style={{color:"#059669",fontWeight:600}}>✓ Champ dédié</span>
+                        :<span style={{color:"#d97706",fontWeight:600}}>🔍 Trouvé dans : {mairieResolved.source}</span>
+                      }
+                    </div>
+                  </>
+                  :<div style={{fontSize:12,color:"var(--tx4)",fontStyle:"italic"}}>Aucun email mairie trouvé.<br/>Saisissez-le ci-dessus ou mentionnez-le dans un commentaire.</div>
+                }
+              </div>
+            </div>
+          </div>
         </div>}
 
         {tab==="paiement"&&isSA&&<div>

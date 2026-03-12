@@ -343,6 +343,20 @@ function startEmailCron(db) {
   });
   console.log('⏰ Cron email démarré (vérification chaque minute)');
 
+  // ── Helper : résoudre l'email mairie (champ dédié → scan commentaires) ──
+  function resolveMairieEmail(dossier) {
+    if (dossier.mairie_email) return dossier.mairie_email;
+    try {
+      const comments = JSON.parse(dossier.comments || '[]');
+      const re = /[\w.+%-]+@[\w-]+\.[a-z]{2,}/i;
+      for (const c of comments) {
+        const m = (c.text || '').match(re);
+        if (m) return m[0];
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
+
   // ── Cron quotidien 8h00 : relances automatiques DP ───────────────────────
   cron.schedule('0 8 * * *', async () => {
     console.log('[CRON RELANCES] Vérification des relances DP automatiques...');
@@ -353,45 +367,40 @@ function startEmailCron(db) {
       `SELECT * FROM dossiers
        WHERE date_envoi_dp IS NOT NULL
          AND date_envoi_dp != ''
-         AND mairie_email IS NOT NULL
-         AND mairie_email != ''
          AND relance_recepisee_at IS NULL
          AND date(date_envoi_dp) <= date('now', '-6 days')`,
       [],
       async (err, dossiers) => {
         if (err) { console.error('[CRON] Erreur relance J+6:', err.message); return; }
         if (!dossiers || dossiers.length === 0) return;
-        console.log(`[CRON] ${dossiers.length} dossier(s) à relancer (récépissé J+6)`);
 
-        // Cherche le template
         db.get(
           `SELECT * FROM email_templates WHERE name = 'Relance récépissé de dépôt (J+6)'`,
           [],
           async (tErr, tmpl) => {
             if (tErr || !tmpl) { console.error('[CRON] Template J+6 introuvable'); return; }
             for (const d of dossiers) {
+              const toEmail = resolveMairieEmail(d);
+              if (!toEmail) {
+                console.log(`[CRON] Relance J+6 ignorée — pas d'email mairie (dossier ${d.id})`);
+                continue;
+              }
               const vars = {
                 ...dossierVars(d),
                 date_envoi_dp: d.date_envoi_dp
-                  ? new Date(d.date_envoi_dp).toLocaleDateString('fr-FR')
-                  : '',
+                  ? new Date(d.date_envoi_dp).toLocaleDateString('fr-FR') : '',
               };
               const subject  = interpolate(tmpl.subject,   vars);
               const bodyHtml = interpolate(tmpl.body_html, vars);
               const bodyText = interpolate(tmpl.body_text, vars);
-              // Enqueue l'email
               await new Promise(res => db.run(
                 `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-                [tmpl.id, d.id, d.mairie_email, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now],
+                [tmpl.id, d.id, toEmail, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now],
                 res
               ));
-              // Marque le dossier comme relancé
-              db.run(
-                `UPDATE dossiers SET relance_recepisee_at = ? WHERE id = ?`,
-                [now, d.id]
-              );
-              console.log(`[CRON] Relance J+6 enqueued → ${d.mairie_email} (dossier ${d.id})`);
+              db.run(`UPDATE dossiers SET relance_recepisee_at = ? WHERE id = ?`, [now, d.id]);
+              console.log(`[CRON] Relance J+6 enqueued → ${toEmail} (dossier ${d.id})`);
             }
           }
         );
@@ -403,15 +412,12 @@ function startEmailCron(db) {
       `SELECT * FROM dossiers
        WHERE date_envoi_dp IS NOT NULL
          AND date_envoi_dp != ''
-         AND mairie_email IS NOT NULL
-         AND mairie_email != ''
          AND relance_accord_dp_at IS NULL
          AND date(date_envoi_dp) <= date('now', '-30 days')`,
       [],
       async (err, dossiers) => {
         if (err) { console.error('[CRON] Erreur relance J+30:', err.message); return; }
         if (!dossiers || dossiers.length === 0) return;
-        console.log(`[CRON] ${dossiers.length} dossier(s) à relancer (accord DP J+30)`);
 
         db.get(
           `SELECT * FROM email_templates WHERE name = 'Relance accord Demande Préalable (J+30)'`,
@@ -419,11 +425,15 @@ function startEmailCron(db) {
           async (tErr, tmpl) => {
             if (tErr || !tmpl) { console.error('[CRON] Template J+30 introuvable'); return; }
             for (const d of dossiers) {
+              const toEmail = resolveMairieEmail(d);
+              if (!toEmail) {
+                console.log(`[CRON] Relance J+30 ignorée — pas d'email mairie (dossier ${d.id})`);
+                continue;
+              }
               const vars = {
                 ...dossierVars(d),
                 date_envoi_dp: d.date_envoi_dp
-                  ? new Date(d.date_envoi_dp).toLocaleDateString('fr-FR')
-                  : '',
+                  ? new Date(d.date_envoi_dp).toLocaleDateString('fr-FR') : '',
               };
               const subject  = interpolate(tmpl.subject,   vars);
               const bodyHtml = interpolate(tmpl.body_html, vars);
@@ -431,14 +441,11 @@ function startEmailCron(db) {
               await new Promise(res => db.run(
                 `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-                [tmpl.id, d.id, d.mairie_email, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now],
+                [tmpl.id, d.id, toEmail, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now],
                 res
               ));
-              db.run(
-                `UPDATE dossiers SET relance_accord_dp_at = ? WHERE id = ?`,
-                [now, d.id]
-              );
-              console.log(`[CRON] Relance J+30 enqueued → ${d.mairie_email} (dossier ${d.id})`);
+              db.run(`UPDATE dossiers SET relance_accord_dp_at = ? WHERE id = ?`, [now, d.id]);
+              console.log(`[CRON] Relance J+30 enqueued → ${toEmail} (dossier ${d.id})`);
             }
           }
         );
