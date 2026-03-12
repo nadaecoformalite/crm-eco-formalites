@@ -132,9 +132,10 @@ const CSS = `
 .sb-usr .uro{font-size:9px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;}
 /* MAIN */
 .main{margin-left:248px;flex:1;display:flex;flex-direction:column;min-height:100vh;}
-.topbar{background:var(--bg2);border-bottom:2px solid var(--bd);padding:0 12px;height:auto;min-height:56px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:50;flex-wrap:wrap;}
-.tb-ttl{font-size:16px;font-weight:800;color:var(--tx);white-space:nowrap;letter-spacing:-.025em;}
-.tb-flt{display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1;}
+.topbar{background:var(--bg2);border-bottom:2px solid var(--bd);padding:0 12px;height:56px;display:flex;align-items:center;gap:8px;position:sticky;top:0;z-index:50;overflow:hidden;}
+.tb-ttl{font-size:16px;font-weight:800;color:var(--tx);white-space:nowrap;letter-spacing:-.025em;flex-shrink:0;}
+.tb-flt{display:flex;align-items:center;gap:5px;flex:1;overflow-x:auto;flex-wrap:nowrap;scrollbar-width:none;}
+.tb-flt::-webkit-scrollbar{display:none;}
 .content{padding:22px;flex:1;}
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;font-family:var(--ff);}
