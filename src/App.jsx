@@ -848,7 +848,10 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
     const ma=!globalFilters.assignee||d.assignee===globalFilters.assignee;
     const mw=!globalFilters.work||d.works.some(w=>w.type===globalFilters.work);
     const mf=!globalFilters.formalite||d.works.some(w=>(w.formalites||[]).includes(globalFilters.formalite));
-    return mq&&ms&&ma&&mw&&mf;
+    const mn=!globalFilters.client_name||d.client.toLowerCase().includes(globalFilters.client_name.toLowerCase());
+    const mcd=!globalFilters.date_created||(d.created&&d.created>=globalFilters.date_created);
+    const mud=!globalFilters.date_updated||(d.updated&&d.updated>=globalFilters.date_updated);
+    return mq&&ms&&ma&&mw&&mf&&mn&&mcd&&mud;
   }),[dossiers,globalQ,globalFilters]);
 
   const create=d=>{setDossiers(p=>[d,...p]);setCreating(false);toast("Dossier cree !","s");};
@@ -1248,7 +1251,7 @@ export default function App(){
   const [notifs,setNotifs]=useState([]);
   const [showNotifs,setShowNotifs]=useState(false);
   const [globalQ,setGlobalQ]=useState("");
-  const [globalFilters,setGlobalFilters]=useState({status:"",assignee:"",work:"",formalite:""});
+  const [globalFilters,setGlobalFilters]=useState({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""});
   const [clientsOrg,setClientsOrg]=useState(INIT_CLIENTS_ORG);
 
   const toggleDark=()=>setDark(d=>{const next=!d;document.documentElement.setAttribute("data-theme",next?"dark":"light");return next;});
@@ -1326,7 +1329,14 @@ export default function App(){
           <div className="tb-ttl">{titles[page]||"CRM"}</div>
 
           {/* Filters — always visible */}
-          <div className="tb-flt" style={{display:"flex",alignItems:"center",gap:6}}>
+          <div className="tb-flt" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+            {/* Nom client */}
+            <input className={"fsel"+(globalFilters.client_name?" on":"")}
+              value={globalFilters.client_name}
+              onChange={e=>setGlobalFilters(f=>({...f,client_name:e.target.value}))}
+              placeholder="Nom client..."
+              style={{minWidth:110,maxWidth:150}}/>
+            {/* Statut */}
             <select className={"fsel"+(globalFilters.status?" on":"")} value={globalFilters.status} onChange={e=>setFilter("status",e.target.value)}>
               <option value="">Statut</option>{ALL_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
@@ -1339,7 +1349,27 @@ export default function App(){
             <select className={"fsel"+(globalFilters.formalite?" on":"")} value={globalFilters.formalite} onChange={e=>setFilter("formalite",e.target.value)}>
               <option value="">Formalite</option>{FORMALITES.map(f=><option key={f}>{f}</option>)}
             </select>
-            {hasFilter&&<button className="btn btn-d btn-sm" onClick={()=>setGlobalFilters({status:"",assignee:"",work:"",formalite:""})}><Ic n="x" s={11}/>Reset</button>}
+            {/* Date création depuis */}
+            <div style={{display:"flex",alignItems:"center",gap:3}}>
+              <span style={{fontSize:10,color:"var(--tx4)",whiteSpace:"nowrap",fontWeight:600}}>Créé ≥</span>
+              <input type="date"
+                className={"fsel"+(globalFilters.date_created?" on":"")}
+                value={globalFilters.date_created}
+                onChange={e=>setGlobalFilters(f=>({...f,date_created:e.target.value}))}
+                style={{width:130}}
+                title="Créé depuis (date)"/>
+            </div>
+            {/* Date modification depuis */}
+            <div style={{display:"flex",alignItems:"center",gap:3}}>
+              <span style={{fontSize:10,color:"var(--tx4)",whiteSpace:"nowrap",fontWeight:600}}>Modifié ≥</span>
+              <input type="date"
+                className={"fsel"+(globalFilters.date_updated?" on":"")}
+                value={globalFilters.date_updated}
+                onChange={e=>setGlobalFilters(f=>({...f,date_updated:e.target.value}))}
+                style={{width:130}}
+                title="Modifié depuis (date)"/>
+            </div>
+            {hasFilter&&<button className="btn btn-d btn-sm" onClick={()=>setGlobalFilters({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""})}><Ic n="x" s={11}/>Reset</button>}
           </div>
 
           <button className="dtog" onClick={toggleDark} title={dark?"Clair":"Sombre"}>{dark?"☀️":"🌙"}</button>
