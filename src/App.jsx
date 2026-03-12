@@ -17,8 +17,6 @@ const DP_STATUSES = ["Incomplet","Récépissé reçu","Réenvoi"];
 const CONS_STATUSES = ["Avis de visite","À envoyer au CONSUEL","Envoyé au CONSUEL","Positif"];
 
 const ALL_STATUSES = [
-  {key:"nouveau",label:"Nouveau",color:"#6366f1",bg:"#eef2ff"},
-  {key:"en_cours",label:"En cours",color:"#E8501A",bg:"#FEF0EB"},
   {key:"en_attente",label:"En attente",color:"#d97706",bg:"#fffbeb"},
   {key:"en_cours_traitement",label:"En cours de traitement",color:"#E8501A",bg:"#FEF0EB"},
   {key:"accord_mairie",label:"Accord Mairie",color:"#059669",bg:"#ecfdf5"},
@@ -28,7 +26,6 @@ const ALL_STATUSES = [
   {key:"attente_racco",label:"Attente Raccordement",color:"#0891b2",bg:"#ecfeff"},
   {key:"batiment_france",label:"Batiment de France",color:"#92400e",bg:"#fef3c7"},
   {key:"consuel_vise",label:"CONSUEL Vise",color:"#059669",bg:"#ecfdf5"},
-  {key:"dossier_termine",label:"Dossier Termine",color:"#374151",bg:"#f9fafb"},
   {key:"incomplet_mairie",label:"Incomplet Mairie",color:"#dc2626",bg:"#fef2f2"},
   {key:"manque_document",label:"Manque Document",color:"#dc2626",bg:"#fef2f2"},
   {key:"mise_en_service",label:"Mise en Service",color:"#059669",bg:"#ecfdf5"},
@@ -455,13 +452,18 @@ function DocPreview({doc,onClose}){
 // ── DOSSIER FORM ──
 function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
   const isSA=currentUser.role==="superadmin";
-  const blank={client:"",client_org:"",email:"",phone:"",address:"",postal_code:"",dp_number:"",parcelle:"",
+  // Décompose client en prénom / nom pour l'édition
+  const splitName=(full="")=>{const parts=(full||"").trim().split(/\s+/);return {prenom:parts[0]||"",nom:parts.slice(1).join(" ")||""};};
+  const blank={client:"",client_prenom:"",client_nom:"",client_org:"",email:"",phone:"",address:"",postal_code:"",dp_number:"",parcelle:"",
     date_envoi_dp:"",mairie_email:"",
     works:[{type:"PAC",formalites:["Demande Prealable"],kwc:"",kwc_c:""}],
-    status:"nouveau",assignee:"",paid:false,amount:0,installed:false,
+    status:"en_attente",assignee:"",paid:false,amount:0,installed:false,
     docs:[],comments:[],avancement:{dp_checked:false,dp_envoi:"",dp_note:"",racc_checked:false,racc_date:"",racc_status:"",racc_note:"",cons_checked:false,cons_date:"",cons_note:"",tva_checked:false,tva_date:"",tva_note:""}
   };
-  const [f,setF]=useState(initial?{...initial,works:(initial.works||[]).map(w=>({...w}))}:blank);
+  const initForm=initial
+    ?{...initial,...splitName(initial.client),works:(initial.works||[]).map(w=>({...w}))}
+    :blank;
+  const [f,setF]=useState(initForm);
   const [sc,setSc]=useState(false);const [dpR,setDpR]=useState(null);
   const [iCmt,setICmt]=useState("");const [newOrg,setNewOrg]=useState("");const [showOrg,setShowOrg]=useState(false);
   const pRef=useRef();
@@ -471,12 +473,13 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
   const needKwc=t=>["Panneaux Solaires","Systeme Solaire Combine"].includes(t);
   const scanPdf=async(file)=>{setSc(true);setDpR(null);const dp=await extractDP(file);setSc(false);if(dp){setDpR(dp);set("dp_number",dp);}else setDpR("none");};
   const save=()=>{
-    if(!f.client.trim())return;
+    const fullName=`${f.client_prenom||""} ${f.client_nom||""}`.trim()||f.client||"";
+    if(!fullName)return;
     const now=new Date().toISOString().split("T")[0];
     const id=initial?.id||genId();
     const cmts=[...(f.comments||[])];
     if(iCmt.trim())cmts.push({author:currentUser.name,date:now,text:iCmt,from_client:false});
-    onSave({...f,id,created:initial?.created||now,updated:now,comments:cmts});
+    onSave({...f,client:fullName,id,created:initial?.created||now,updated:now,comments:cmts});
   };
   return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="modal">
@@ -540,7 +543,8 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
             {/* Client info */}
             <div className="sec" style={{marginBottom:12}}>Informations client</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-              <div className="fg"><label className="lbl">Nom complet *</label><input value={f.client} onChange={e=>set("client",e.target.value)} placeholder="Prenom Nom"/></div>
+              <div className="fg"><label className="lbl">Prénom *</label><input value={f.client_prenom||""} onChange={e=>set("client_prenom",e.target.value)} placeholder="Prénom"/></div>
+              <div className="fg"><label className="lbl">Nom *</label><input value={f.client_nom||""} onChange={e=>set("client_nom",e.target.value)} placeholder="Nom de famille"/></div>
               <div className="fg">
                 <label className="lbl">Organisme</label>
                 <div style={{display:"flex",gap:5}}>
@@ -1397,7 +1401,7 @@ export default function App(){
 
   const navItems=[
     {id:"dashboard",icon:"bar",label:"Dashboard"},
-    {id:"dossiers",icon:"folder",label:"Dossiers",badge:dossiers.length},
+    {id:"dossiers",icon:"folder",label:"Dossiers",badge:dossiers.filter(d=>!d.assignee).length},
     {id:"clients",icon:"users",label:"Clients",badge:clientsOrg.length},
     ...(isSA?[{id:"paiements",icon:"credit",label:"Paiements",badge:dossiers.filter(d=>!d.paid).length}]:[]),
     {id:"ged",icon:"file",label:"GED"},
