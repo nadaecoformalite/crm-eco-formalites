@@ -68,26 +68,94 @@ async function extractDPNumber(file) {
 
 async function extractKbisData(file) {
   try {
-    const text = await extractTextFromPDF(file);
-    // SIRET: 14 digits (possibly spaced)
-    const siretM = text.match(/\b\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s.]?\d{5}\b/);
-    const siret = siretM
-      ? siretM[0].replace(/[\s.]/g, '').replace(/(\d{3})(\d{3})(\d{3})(\d{5})/, '$1 $2 $3 $4')
-      : null;
+    const raw = await extractTextFromPDF(file);
 
-    // Company name — usually after "Dénomination :" or "Raison sociale :"
-    const nameM = text.match(/(?:D[eé]nomination|Raison sociale)\s*:?\s*([A-Z][^\n]{2,60})/i);
-    const company_name = nameM ? nameM[1].trim() : null;
+    // Normalise : collapse whitespace excessif tout en gardant les sauts de ligne
+    const text = raw
+      .split('\n')
+      .map(l => l.replace(/\s{2,}/g, ' ').trim())
+      .join('\n');
 
-    // Address — look for a line with a number + street
-    const addrM = text.match(/\b\d{1,4}\s+(?:rue|avenue|boulevard|chemin|impasse|allée|place|route)\b[^\n]{5,80}/i);
-    const address = addrM ? addrM[0].trim() : null;
+    // ── Helper : chercher la valeur qui suit un libellé sur la même ligne ou la suivante ──
+    function after(labelPattern) {
+      // Tente d'abord "Libellé : valeur" sur la même ligne
+      const inline = new RegExp(labelPattern + '[\\s:–-]*([^\\n]{2,100})', 'i');
+      const m1 = text.match(inline);
+      if (m1) {
+        const v = m1[1].trim().replace(/^[:–\-\s]+/, '');
+        if (v.length > 1) return v;
+      }
+      // Sinon la valeur est sur la ligne suivante
+      const nextLine = new RegExp(labelPattern + '[^\\n]*\\n([^\\n]{2,100})', 'i');
+      const m2 = text.match(nextLine);
+      if (m2) return m2[1].trim().replace(/^[:–\-\s]+/, '');
+      return null;
+    }
 
-    // Representant — after "Gérant :", "Dirigeant :", "Président :"
-    const reprM = text.match(/(?:G[eé]rant|Dirigeant|Pr[eé]sident|Directeur)\s*:?\s*([A-Z][a-zA-ZÀ-ÿ\s\-]{3,50})/i);
-    const representant = reprM ? reprM[1].trim() : null;
+    // ── 1. Dénomination sociale → Nom entreprise ──────────────────────────
+    const company_name =
+      after('D[eé]nomination\\s+sociale') ||
+      after('D[eé]nomination') ||
+      after('Raison\\s+sociale') ||
+      null;
 
-    return { siret, company_name, address, representant };
+    // ── 2. Immatriculation au RCS → SIRET / SIREN ────────────────────────
+    // Le KBIS mentionne "Immatriculation au RCS de VILLE" puis le numéro SIREN (9 chiffres)
+    // On accepte aussi le SIRET (14 chiffres) s'il est présent
+    let siret = null;
+    const rcsBlock = text.match(
+      /Immatriculation\s+au\s+RCS[^\n]{0,80}\n?([^\n]{0,80})/i
+    );
+    if (rcsBlock) {
+      // Cherche un numéro 9 ou 14 chiffres (avec espaces ou points éventuels)
+      const numM = (rcsBlock[0] + (rcsBlock[1] || '')).match(
+        /\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}(?:[\s.]?\d{5})?)\b/
+      );
+      if (numM) {
+        const digits = numM[1].replace(/[\s.]/g, '');
+        if (digits.length === 14) {
+          siret = digits.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/, '$1 $2 $3 $4');
+        } else if (digits.length === 9) {
+          siret = digits.replace(/(\d{3})(\d{3})(\d{3})/, '$1 $2 $3');
+        }
+      }
+    }
+    // Fallback : chercher un SIRET 14 chiffres n'importe où dans le doc
+    if (!siret) {
+      const fallback = text.match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s.]?\d{5})\b/);
+      if (fallback) {
+        const d = fallback[1].replace(/[\s.]/g, '');
+        siret = d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/, '$1 $2 $3 $4');
+      }
+    }
+
+    // ── 3. Adresse du siège → adresse ────────────────────────────────────
+    const address =
+      after('Adresse\\s+du\\s+si[èe]ge\\s+social') ||
+      after('Adresse\\s+du\\s+si[èe]ge') ||
+      after('Si[èe]ge\\s+social') ||
+      null;
+
+    // ── 4. Représentant légal → représentant ─────────────────────────────
+    // Le KBIS liste les représentants sous "Représentant(s) légaux" ou détaille
+    // chaque personne avec "Gérant", "Président", "Directeur général", etc.
+    const representant =
+      after('Repr[eé]sentant(?:s)?\\s+l[eé]gaux?') ||
+      after('G[eé]rant') ||
+      after('Pr[eé]sident') ||
+      after('Directeur\\s+g[eé]n[eé]ral') ||
+      after('Dirigeant') ||
+      null;
+
+    // Nettoie les valeurs : retire les séquences de points (...), les tirets, etc.
+    const clean = v => v ? v.replace(/\.{2,}/g, '').replace(/^\W+/, '').trim() : null;
+
+    return {
+      siret:        clean(siret),
+      company_name: clean(company_name),
+      address:      clean(address),
+      representant: clean(representant),
+    };
   } catch { return null; }
 }
 
@@ -128,24 +196,24 @@ function ExtractionBanner({ data, onApply, onDismiss }) {
           <strong>{dp_number}</strong>
         </div>
       )}
-      {kbis?.siret && (
-        <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
-          <span style={{ color: '#6B6B60' }}>SIRET : </span><strong>{kbis.siret}</strong>
-        </div>
-      )}
       {kbis?.company_name && (
         <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
-          <span style={{ color: '#6B6B60' }}>Société : </span><strong>{kbis.company_name}</strong>
+          <span style={{ color: '#6B6B60' }}>Dénomination sociale : </span><strong>{kbis.company_name}</strong>
+        </div>
+      )}
+      {kbis?.siret && (
+        <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
+          <span style={{ color: '#6B6B60' }}>Immatriculation au RCS : </span><strong>{kbis.siret}</strong>
         </div>
       )}
       {kbis?.address && (
         <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
-          <span style={{ color: '#6B6B60' }}>Adresse : </span><strong>{kbis.address}</strong>
+          <span style={{ color: '#6B6B60' }}>Adresse du siège : </span><strong>{kbis.address}</strong>
         </div>
       )}
       {kbis?.representant && (
         <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
-          <span style={{ color: '#6B6B60' }}>Représentant : </span><strong>{kbis.representant}</strong>
+          <span style={{ color: '#6B6B60' }}>Représentant légal : </span><strong>{kbis.representant}</strong>
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
