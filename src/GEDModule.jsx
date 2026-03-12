@@ -51,16 +51,40 @@ async function extractTextFromPDF(file) {
   return text;
 }
 
+// Détecte si un nom de fichier correspond à un récépissé de dépôt
+function isRecepisseFile(filename) {
+  const n = (filename || '').toLowerCase().replace(/[_\-\s.]/g, '');
+  return /rec[eé]piss[eé]/.test(n)
+    || /\brd\b/.test((filename || '').toLowerCase())
+    || n.startsWith('rd')
+    || /recepisse/.test(n)
+    || /recepisee/.test(n)
+    || /accusedereception/.test(n);
+}
+
 async function extractDPNumber(file) {
   try {
     const text = await extractTextFromPDF(file);
     const patterns = [
+      // Format officiel DP : DP + 3+3+2+5 = 13 chiffres (ex: DP 075 111 24 00001)
+      /DP[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{2})[\s\-\.\/]?(\d{5})/gi,
+      // Variante : DP collé ou avec séparateurs variés
       /DP[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2,4}[\s\-]?\d{3,6}/gi,
-      /\bDP\s{0,3}\d[\d\s]{6,25}/gi,
+      // DP suivi de 13 chiffres groupés
+      /\bDP\s{0,3}\d[\d\s\-]{10,18}\d\b/gi,
     ];
     for (const p of patterns) {
       const m = text.match(p);
-      if (m) return m[0].trim().replace(/\s+/g, ' ').slice(0, 50);
+      if (m) {
+        // Normalise : garde DP + les chiffres séparés par espaces
+        const raw = m[0].trim();
+        const digits = raw.replace(/[^0-9]/g, '');
+        if (digits.length >= 13) {
+          // Formate en DP XXX XXX YY ZZZZZ
+          return `DP ${digits.slice(0,3)} ${digits.slice(3,6)} ${digits.slice(6,8)} ${digits.slice(8,13)}`;
+        }
+        return raw.replace(/\s+/g, ' ').slice(0, 50);
+      }
     }
     return null;
   } catch { return null; }
@@ -379,14 +403,22 @@ function DropZone({ dossierId, category, onUploaded, onExtracted }) {
     const catDef = catMap[category] || catMap.autre;
     let extractedData = null;
 
-    // Run PDF extraction for relevant categories
     for (const file of files) {
       if (file.type !== 'application/pdf') continue;
 
-      if (catDef.extractDP) {
-        setProgress('Extraction du N° DP...');
+      const isRD = isRecepisseFile(file.name);
+
+      // Extraction DP : catégorie "dp" OU fichier récépissé (RD/rd/recepisse)
+      if (catDef.extractDP || isRD) {
+        setProgress(isRD
+          ? `📄 Récépissé détecté — extraction N° DP 13 chiffres...`
+          : 'Extraction du N° DP...');
         const dp = await extractDPNumber(file);
-        if (dp) extractedData = { ...extractedData, dp_number: dp };
+        if (dp) {
+          extractedData = { ...extractedData, dp_number: dp };
+          // Récépissé → application immédiate sans bannière de confirmation
+          if (isRD) extractedData = { ...extractedData, forceApply: true };
+        }
       }
 
       if (catDef.extractKbis) {
@@ -449,6 +481,10 @@ function DropZone({ dossierId, category, onUploaded, onExtracted }) {
               🔍 N° DP extrait automatiquement
             </div>
           )}
+          <div style={{ marginTop: 6, fontSize: 10, color: '#6366f1', background: '#eef2ff',
+            padding: '3px 9px', borderRadius: 20, display: 'inline-block', fontWeight: 600 }}>
+            📋 Fichier nommé RD / récépissé → N° DP extrait et enregistré automatiquement
+          </div>
           {catDef?.extractKbis && (
             <div style={{ marginTop: 8, fontSize: 11, color: '#1A4A8A', background: '#EEF3FD',
               padding: '4px 10px', borderRadius: 20, display: 'inline-block', fontWeight: 600 }}>
@@ -551,10 +587,23 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
     reload();
   }, [reload, showToast]);
 
-  const handleExtracted = useCallback((data, dId) => {
+  const handleExtracted = useCallback(async (data, dId) => {
     const hasData = data?.dp_number || data?.kbis?.siret || data?.kbis?.company_name;
-    if (hasData) setExtractedBanner({ data, dossierId: dId });
-  }, []);
+    if (!hasData) return;
+
+    // Récépissé détecté → application immédiate, pas de bannière
+    if (data.forceApply && data.dp_number) {
+      try {
+        await applyExtractedData(dId, { dp_number: data.dp_number });
+        if (onDossierUpdate) onDossierUpdate(dId, { dp_number: data.dp_number });
+        showToast(`✓ N° DP extrait du récépissé et enregistré : ${data.dp_number}`, 'success');
+      } catch { showToast('Extraction DP réussie mais erreur d\'enregistrement', 'error'); }
+      return;
+    }
+
+    // Sinon bannière de confirmation
+    setExtractedBanner({ data, dossierId: dId });
+  }, [onDossierUpdate, showToast]);
 
   const handleApplyExtracted = async () => {
     if (!extractedBanner) return;
