@@ -201,6 +201,64 @@ const DEFAULT_TEMPLATES = [
     body_text: `Bonjour {{client_name}},\n\nRappel concernant votre dossier {{dossier_id}} en attente.\n\n{{assignee}} — {{company_name}} — {{company_email}}`
   },
   {
+    name: 'Relance récépissé de dépôt (J+6)',
+    subject: 'Demande Préalable {{dp_number}} — {{client_name}} — Accusé de réception',
+    category: 'mairie',
+    variables: JSON.stringify(['client_name','client_address','dp_number','dossier_id','date_envoi_dp','date_today','company_name','company_email']),
+    body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
+  <div style="background:#1A4A8A;padding:20px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;">Eco-Formalités — Relance récépissé de dépôt</h1>
+  </div>
+  <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
+    <p>Madame, Monsieur,</p>
+    <p>Nous revenons vers vous concernant la demande préalable de travaux déposée pour notre client <strong>{{client_name}}</strong>, domicilié au <strong>{{client_address}}</strong>.</p>
+    <p>Notre dossier a été transmis à votre service le <strong>{{date_envoi_dp}}</strong> et nous n'avons pas encore reçu de récépissé de dépôt.</p>
+    <table style="width:100%;background:#F5F5F0;border-radius:8px;padding:16px;margin:16px 0;border-collapse:collapse;">
+      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Référence interne</td><td style="padding:6px 12px;font-weight:700;">{{dossier_id}}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">N° Demande Préalable</td><td style="padding:6px 12px;font-weight:700;">{{dp_number}}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Date d'envoi du dossier</td><td style="padding:6px 12px;">{{date_envoi_dp}}</td></tr>
+    </table>
+    <p>Pourriez-vous, s'il vous plaît, nous confirmer la bonne réception de ce dossier et nous faire parvenir le <strong>récépissé de dépôt</strong> dans les meilleurs délais ?</p>
+    <p>Nous restons à votre disposition pour tout renseignement complémentaire.</p>
+    <p style="margin-top:24px;">Veuillez agréer l'expression de nos salutations distinguées,<br><strong>{{company_name}}</strong><br>{{company_email}}</p>
+  </div>
+  <div style="background:#F5F5F0;padding:12px 24px;text-align:center;font-size:11px;color:#A0A090;border-radius:0 0 8px 8px;">
+    Relance automatique — {{date_today}} — {{company_name}}
+  </div>
+</div>`,
+    body_text: `Madame, Monsieur,\n\nRelance concernant la DP de {{client_name}} ({{client_address}}) déposée le {{date_envoi_dp}}.\nRéf: {{dossier_id}} — DP n°: {{dp_number}}\n\nMerci de nous faire parvenir le récépissé de dépôt.\n\n{{company_name}} — {{company_email}}`
+  },
+  {
+    name: 'Relance accord Demande Préalable (J+30)',
+    subject: 'Demande Préalable {{dp_number}} — {{client_name}} — Demande de décision',
+    category: 'mairie',
+    variables: JSON.stringify(['client_name','client_address','dp_number','dossier_id','date_envoi_dp','date_today','company_name','company_email']),
+    body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
+  <div style="background:#6366f1;padding:20px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;">Eco-Formalités — Suivi Demande Préalable</h1>
+  </div>
+  <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
+    <p>Madame, Monsieur,</p>
+    <p>Nous nous permettons de revenir vers vous au sujet de la demande préalable de travaux déposée le <strong>{{date_envoi_dp}}</strong> pour notre client <strong>{{client_name}}</strong>, domicilié au <strong>{{client_address}}</strong>.</p>
+    <div style="background:#eef2ff;border-left:4px solid #6366f1;padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0;">
+      <p style="margin:0;font-size:13px;">Le délai légal d'instruction d'un mois étant désormais écoulé, nous souhaiterions connaître la <strong>décision de votre service</strong> concernant cette demande.</p>
+    </div>
+    <table style="width:100%;background:#F5F5F0;border-radius:8px;padding:16px;margin:16px 0;border-collapse:collapse;">
+      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Référence interne</td><td style="padding:6px 12px;font-weight:700;">{{dossier_id}}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">N° Demande Préalable</td><td style="padding:6px 12px;font-weight:700;">{{dp_number}}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Date de dépôt</td><td style="padding:6px 12px;">{{date_envoi_dp}}</td></tr>
+      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Client</td><td style="padding:6px 12px;">{{client_name}} — {{client_address}}</td></tr>
+    </table>
+    <p>Pourriez-vous nous communiquer <strong>l'accord ou l'arrêté de non-opposition</strong> à cette déclaration préalable de travaux, ou nous indiquer si des pièces complémentaires sont nécessaires ?</p>
+    <p style="margin-top:24px;">Veuillez agréer l'expression de nos salutations distinguées,<br><strong>{{company_name}}</strong><br>{{company_email}}</p>
+  </div>
+  <div style="background:#F5F5F0;padding:12px 24px;text-align:center;font-size:11px;color:#A0A090;border-radius:0 0 8px 8px;">
+    Relance automatique — {{date_today}} — {{company_name}}
+  </div>
+</div>`,
+    body_text: `Madame, Monsieur,\n\nRelance pour l'accord de la DP de {{client_name}} ({{client_address}}) déposée le {{date_envoi_dp}}.\nRéf: {{dossier_id}} — DP n°: {{dp_number}}\n\nMerci de nous communiquer la décision (accord / non-opposition).\n\n{{company_name}} — {{company_email}}`
+  },
+  {
     name: 'Récupération de TVA',
     subject: 'Dossier TVA — {{client_name}} — Réf. {{dossier_id}}',
     category: 'administration',
@@ -284,6 +342,110 @@ function startEmailCron(db) {
     );
   });
   console.log('⏰ Cron email démarré (vérification chaque minute)');
+
+  // ── Cron quotidien 8h00 : relances automatiques DP ───────────────────────
+  cron.schedule('0 8 * * *', async () => {
+    console.log('[CRON RELANCES] Vérification des relances DP automatiques...');
+    const now = new Date().toISOString();
+
+    // ── Relance 1 : J+6 → récépissé de dépôt (vers mairie) ──────────────────
+    db.all(
+      `SELECT * FROM dossiers
+       WHERE date_envoi_dp IS NOT NULL
+         AND date_envoi_dp != ''
+         AND mairie_email IS NOT NULL
+         AND mairie_email != ''
+         AND relance_recepisee_at IS NULL
+         AND date(date_envoi_dp) <= date('now', '-6 days')`,
+      [],
+      async (err, dossiers) => {
+        if (err) { console.error('[CRON] Erreur relance J+6:', err.message); return; }
+        if (!dossiers || dossiers.length === 0) return;
+        console.log(`[CRON] ${dossiers.length} dossier(s) à relancer (récépissé J+6)`);
+
+        // Cherche le template
+        db.get(
+          `SELECT * FROM email_templates WHERE name = 'Relance récépissé de dépôt (J+6)'`,
+          [],
+          async (tErr, tmpl) => {
+            if (tErr || !tmpl) { console.error('[CRON] Template J+6 introuvable'); return; }
+            for (const d of dossiers) {
+              const vars = {
+                ...dossierVars(d),
+                date_envoi_dp: d.date_envoi_dp
+                  ? new Date(d.date_envoi_dp).toLocaleDateString('fr-FR')
+                  : '',
+              };
+              const subject  = interpolate(tmpl.subject,   vars);
+              const bodyHtml = interpolate(tmpl.body_html, vars);
+              const bodyText = interpolate(tmpl.body_text, vars);
+              // Enqueue l'email
+              await new Promise(res => db.run(
+                `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+                [tmpl.id, d.id, d.mairie_email, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now],
+                res
+              ));
+              // Marque le dossier comme relancé
+              db.run(
+                `UPDATE dossiers SET relance_recepisee_at = ? WHERE id = ?`,
+                [now, d.id]
+              );
+              console.log(`[CRON] Relance J+6 enqueued → ${d.mairie_email} (dossier ${d.id})`);
+            }
+          }
+        );
+      }
+    );
+
+    // ── Relance 2 : J+30 → accord de la DP (vers mairie) ────────────────────
+    db.all(
+      `SELECT * FROM dossiers
+       WHERE date_envoi_dp IS NOT NULL
+         AND date_envoi_dp != ''
+         AND mairie_email IS NOT NULL
+         AND mairie_email != ''
+         AND relance_accord_dp_at IS NULL
+         AND date(date_envoi_dp) <= date('now', '-30 days')`,
+      [],
+      async (err, dossiers) => {
+        if (err) { console.error('[CRON] Erreur relance J+30:', err.message); return; }
+        if (!dossiers || dossiers.length === 0) return;
+        console.log(`[CRON] ${dossiers.length} dossier(s) à relancer (accord DP J+30)`);
+
+        db.get(
+          `SELECT * FROM email_templates WHERE name = 'Relance accord Demande Préalable (J+30)'`,
+          [],
+          async (tErr, tmpl) => {
+            if (tErr || !tmpl) { console.error('[CRON] Template J+30 introuvable'); return; }
+            for (const d of dossiers) {
+              const vars = {
+                ...dossierVars(d),
+                date_envoi_dp: d.date_envoi_dp
+                  ? new Date(d.date_envoi_dp).toLocaleDateString('fr-FR')
+                  : '',
+              };
+              const subject  = interpolate(tmpl.subject,   vars);
+              const bodyHtml = interpolate(tmpl.body_html, vars);
+              const bodyText = interpolate(tmpl.body_text, vars);
+              await new Promise(res => db.run(
+                `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+                [tmpl.id, d.id, d.mairie_email, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now],
+                res
+              ));
+              db.run(
+                `UPDATE dossiers SET relance_accord_dp_at = ? WHERE id = ?`,
+                [now, d.id]
+              );
+              console.log(`[CRON] Relance J+30 enqueued → ${d.mairie_email} (dossier ${d.id})`);
+            }
+          }
+        );
+      }
+    );
+  });
+  console.log('⏰ Cron relances DP démarré (tous les jours à 08:00)');
 }
 
 // ── Routes: Templates ─────────────────────────────────────────────────────────

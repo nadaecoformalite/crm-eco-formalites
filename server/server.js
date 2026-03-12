@@ -144,6 +144,23 @@ db.serialize(() => {
     // Seed templates after tables are created
     setTimeout(() => seedTemplates(db), 500);
   });
+
+  // ── Migrations : colonnes de suivi DP ──────────────────────────────────────
+  // SQLite ignore silencieusement si la colonne existe déjà (IF NOT EXISTS non supporté
+  // pour ADD COLUMN avant SQLite 3.37, donc on tente et on absorbe l'erreur)
+  const migrations = [
+    `ALTER TABLE dossiers ADD COLUMN date_envoi_dp TEXT`,
+    `ALTER TABLE dossiers ADD COLUMN mairie_email TEXT`,
+    `ALTER TABLE dossiers ADD COLUMN relance_recepisee_at TEXT`,
+    `ALTER TABLE dossiers ADD COLUMN relance_accord_dp_at TEXT`,
+  ];
+  migrations.forEach(sql => {
+    db.run(sql, err => {
+      if (err && !err.message.includes('duplicate column')) {
+        console.error('Migration:', err.message);
+      }
+    });
+  });
 });
 
 // ── Inject DB into requests ───────────────────────────────────────────────────

@@ -380,6 +380,7 @@ function DocPreview({doc,onClose}){
 function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
   const isSA=currentUser.role==="superadmin";
   const blank={client:"",client_org:"",email:"",phone:"",address:"",postal_code:"",dp_number:"",parcelle:"",
+    date_envoi_dp:"",mairie_email:"",
     works:[{type:"PAC",formalites:["Demande Prealable"],kwc:"",kwc_c:""}],
     status:"nouveau",assignee:EMPLOYEES[0],paid:false,amount:0,installed:false,
     docs:[],comments:[],avancement:{dp_checked:false,dp_envoi:"",dp_note:"",racc_checked:false,racc_date:"",racc_status:"",racc_note:"",cons_checked:false,cons_date:"",cons_note:"",tva_checked:false,tva_date:"",tva_note:""}
@@ -431,6 +432,34 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
               {sc&&<div style={{display:"flex",gap:6,fontSize:12,color:"var(--tx3)",padding:"4px 0"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>Lecture PDF...</div>}
               {dpR&&dpR!=="none"&&<div style={{background:"var(--gr-l)",border:"1px solid #a7f3d0",borderRadius:"var(--r)",padding:"8px 12px",display:"flex",gap:8,marginTop:5}}><Ic n="check" s={13} c="var(--gr)"/><div><div style={{fontSize:10,fontWeight:700,color:"var(--gr)"}}>N° DP detecte</div><div style={{fontSize:12,fontFamily:"var(--fm)"}}>{dpR}</div></div></div>}
               {dpR==="none"&&<div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:"var(--r)",padding:"7px 10px",fontSize:11,color:"#b45309",marginTop:5}}>Aucun N° DP trouve. Saisir manuellement.</div>}
+            </div>
+            {/* Envoi DP + Email mairie → relances automatiques */}
+            <div style={{background:"#eef2ff",border:"1.5px solid #c7d2fe",borderRadius:"var(--rl)",padding:14,marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#6366f1",marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>⏰ Relances automatiques</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                <div className="fg">
+                  <label className="lbl">Date d'envoi du dossier DP
+                    <span style={{marginLeft:6,fontSize:10,color:"#6366f1",fontWeight:600,background:"#e0e7ff",padding:"1px 6px",borderRadius:8}}>J+6 récépissé</span>
+                  </label>
+                  <input type="date" value={f.date_envoi_dp||""} onChange={e=>set("date_envoi_dp",e.target.value)}/>
+                  {f.date_envoi_dp&&(()=>{
+                    const sent=new Date(f.date_envoi_dp);
+                    const j6=new Date(sent);j6.setDate(j6.getDate()+6);
+                    const j30=new Date(sent);j30.setDate(j30.getDate()+30);
+                    return <div style={{fontSize:10,color:"#4f46e5",marginTop:4}}>
+                      📧 Relance récépissé : <strong>{j6.toLocaleDateString("fr-FR")}</strong><br/>
+                      📧 Relance accord DP : <strong>{j30.toLocaleDateString("fr-FR")}</strong>
+                    </div>;
+                  })()}
+                </div>
+                <div className="fg">
+                  <label className="lbl">Email de la mairie
+                    <span style={{marginLeft:6,fontSize:10,color:"#6366f1",fontWeight:600,background:"#e0e7ff",padding:"1px 6px",borderRadius:8}}>J+30 accord</span>
+                  </label>
+                  <input type="email" value={f.mairie_email||""} onChange={e=>set("mairie_email",e.target.value)} placeholder="urbanisme@mairie-xxx.fr"/>
+                  <div style={{fontSize:10,color:"#6B6B60",marginTop:3}}>Relances envoyées automatiquement à cette adresse</div>
+                </div>
+              </div>
             </div>
             {/* Client info */}
             <div className="sec" style={{marginBottom:12}}>Informations client</div>
@@ -553,6 +582,33 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
                 <div style={{fontSize:9,fontWeight:700,color:"var(--tx4)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:3}}>{l}</div>
                 <div style={{fontSize:13,fontWeight:500,fontFamily:l==="N° DP"?"var(--fm)":"var(--ff)"}}>{v||"—"}</div>
               </div>)}
+              {/* Bloc relances automatiques */}
+              {(d.date_envoi_dp||d.mairie_email)&&<div style={{background:"#eef2ff",border:"1.5px solid #c7d2fe",borderRadius:"var(--r)",padding:"10px 12px",marginTop:4}}>
+                <div style={{fontSize:9,fontWeight:800,color:"#6366f1",textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}}>⏰ Relances auto</div>
+                {d.mairie_email&&<div style={{fontSize:11,color:"#374151",marginBottom:3}}><span style={{color:"#6B6B60"}}>Mairie : </span><strong>{d.mairie_email}</strong></div>}
+                {d.date_envoi_dp&&(()=>{
+                  const sent=new Date(d.date_envoi_dp);
+                  const j6=new Date(sent);j6.setDate(j6.getDate()+6);
+                  const j30=new Date(sent);j30.setDate(j30.getDate()+30);
+                  const today=new Date();
+                  return <>
+                    <div style={{fontSize:11,marginBottom:2}}>
+                      <span style={{color:"#6B6B60"}}>Envoi dossier : </span>
+                      <strong>{sent.toLocaleDateString("fr-FR")}</strong>
+                    </div>
+                    <div style={{fontSize:11,marginBottom:2,color:d.relance_recepisee_at?"#059669":"#6366f1"}}>
+                      {d.relance_recepisee_at?"✅":"📧"} Relance récépissé (J+6) : <strong>{j6.toLocaleDateString("fr-FR")}</strong>
+                      {d.relance_recepisee_at&&<span style={{color:"#059669",marginLeft:5,fontSize:10}}>envoyée</span>}
+                      {!d.relance_recepisee_at&&j6<=today&&<span style={{color:"#dc2626",marginLeft:5,fontSize:10,fontWeight:700}}>EN ATTENTE</span>}
+                    </div>
+                    <div style={{fontSize:11,color:d.relance_accord_dp_at?"#059669":"#6366f1"}}>
+                      {d.relance_accord_dp_at?"✅":"📧"} Relance accord DP (J+30) : <strong>{j30.toLocaleDateString("fr-FR")}</strong>
+                      {d.relance_accord_dp_at&&<span style={{color:"#059669",marginLeft:5,fontSize:10}}>envoyée</span>}
+                      {!d.relance_accord_dp_at&&j30<=today&&<span style={{color:"#dc2626",marginLeft:5,fontSize:10,fontWeight:700}}>EN ATTENTE</span>}
+                    </div>
+                  </>;
+                })()}
+              </div>}
             </div>
             <div>
               <div style={{fontSize:9,fontWeight:700,color:"var(--tx4)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:8}}>Travaux</div>
