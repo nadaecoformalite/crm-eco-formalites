@@ -642,7 +642,7 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
     toast(nd.length+" fichier(s) ajoute(s)","s");
     addNotif({type:"doc",msg:nd.length+" doc(s) ajoute(s) — "+d.client,dossier_id:d.id,date:new Date().toISOString()});
   };
-  const tabs=["info","avancement","documents","commentaires",...(isSA?["paiement"]:[])];
+  const tabs=["info","documents","avancement","commentaires",...(isSA?["paiement"]:[])];
   const tabLabel={info:"Informations",avancement:"Avancement",documents:"Documents",commentaires:"Commentaires",paiement:"Paiement"};
   return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
     {previewDoc&&<DocPreview doc={previewDoc} onClose={()=>setPreviewDoc(null)}/>}
