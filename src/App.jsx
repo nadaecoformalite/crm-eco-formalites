@@ -11,8 +11,10 @@ const WORK_TYPES = ["ITE","PAC","Panneaux Solaires","Systeme Solaire Combine","M
 const WORK_COLORS = {"ITE":"#6366f1","PAC":"#E8501A","Panneaux Solaires":"#f59e0b","Systeme Solaire Combine":"#f97316","Menuiseries Exterieures":"#0891b2","Abri Jardin":"#059669","Pergola":"#7c3aed","Carport":"#be185d"};
 const KWC_OPTIONS = ["3.375 kwc","3.5 kwc","3.75 kwc","4 kwc","4.125 kwc","4.5 kwc","5 kwc","5.25 kwc","5.5 kwc","6 kwc","6.75 kwc","7 kwc","7.5 kwc","8 kwc","8.25 kwc","9 kwc","Personnalise"];
 const FORMALITES = ["Demande Prealable","Raccordement","Consuel","Recuperation de TVA"];
-const RACC_STATUSES = ["Complet","Incomplet","En cours d instruction","Subvention accordee","En attente de paiement","Pas eligible"];
+const RACC_STATUSES = ["Complet","Incomplet","En cours d instruction","Subvention accordee","En attente de paiement","Pas eligible","Mise en service programmée","Mise en service","Réenvoi"];
+const RACC_STATUSES_WITH_DATE = ["Mise en service programmée","Mise en service","Réenvoi"];
 const DP_STATUSES = ["Incomplet","Récépissé reçu","Réenvoi"];
+const CONS_STATUSES = ["Avis de visite","À envoyer au CONSUEL","Envoyé au CONSUEL","Positif"];
 
 const ALL_STATUSES = [
   {key:"nouveau",label:"Nouveau",color:"#6366f1",bg:"#eef2ff"},
@@ -314,10 +316,23 @@ function Avancement({d,save,toast}){
     {key:"tva",label:"Recuperation TVA",sentKey:"tva_date",noteKey:"tva_note",color:"#059669"},
   ];
 
-  // Couleur du badge selon statut DP
+  // Couleurs badges statut DP
   const dpStatusColor={
     "Récépissé reçu":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},
     "Incomplet":{bg:"#fffbeb",border:"#fcd34d",tx:"#b45309"},
+    "Réenvoi":{bg:"#fef2f2",border:"#fca5a5",tx:"#dc2626"},
+  };
+  // Couleurs badges statut CONSUEL
+  const consStatusColor={
+    "Positif":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},
+    "Envoyé au CONSUEL":{bg:"#EEF3FD",border:"#bfdbfe",tx:"#1A4A8A"},
+    "À envoyer au CONSUEL":{bg:"#fffbeb",border:"#fcd34d",tx:"#b45309"},
+    "Avis de visite":{bg:"#f5f3ff",border:"#c4b5fd",tx:"#7c3aed"},
+  };
+  // Couleurs badges statut Raccordement
+  const raccStatusColor={
+    "Mise en service":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},
+    "Mise en service programmée":{bg:"#EEF3FD",border:"#bfdbfe",tx:"#1A4A8A"},
     "Réenvoi":{bg:"#fef2f2",border:"#fca5a5",tx:"#dc2626"},
   };
 
@@ -329,8 +344,14 @@ function Avancement({d,save,toast}){
       const note=av[st.noteKey]||"";
       const isRacc=st.key==="racc";
       const isDP=st.key==="dp";
+      const isCons=st.key==="cons";
       const dpSt=av.dp_status||"";
       const dpStColor=dpStatusColor[dpSt];
+      const raccSt=av.racc_status||"";
+      const raccStColor=raccStatusColor[raccSt];
+      const consSt=av.cons_status||"";
+      const consStColor=consStatusColor[consSt];
+      const raccNeedsDate=RACC_STATUSES_WITH_DATE.includes(raccSt);
       return <div className="av-section" key={st.key}>
         <div className="av-head" style={{borderLeft:"4px solid "+st.color}}>
           <div className={"av-dot"+(checked?" done":"")} onClick={()=>upd(st.key+"_checked",!checked)}>
@@ -338,8 +359,10 @@ function Avancement({d,save,toast}){
           </div>
           <div style={{flex:1}}>
             <div style={{fontSize:13,fontWeight:700,color:checked?"var(--gr)":"var(--tx)"}}>{st.label}</div>
-            {checked&&!isDP&&<div style={{fontSize:10,color:"var(--gr)",marginTop:1}}>✓ Complete</div>}
+            {checked&&!isDP&&!isCons&&!isRacc&&<div style={{fontSize:10,color:"var(--gr)",marginTop:1}}>✓ Complete</div>}
             {isDP&&dpSt&&<div style={{fontSize:10,marginTop:1,color:dpStColor?.tx||"var(--tx3)",fontWeight:600}}>{dpSt}</div>}
+            {isCons&&consSt&&<div style={{fontSize:10,marginTop:1,color:consStColor?.tx||"var(--tx3)",fontWeight:600}}>{consSt}</div>}
+            {isRacc&&raccSt&&<div style={{fontSize:10,marginTop:1,color:raccStColor?.tx||"var(--or)",fontWeight:600}}>{raccSt}</div>}
           </div>
           {/* Dropdown statut DP */}
           {isDP&&<select value={dpSt} onChange={e=>upd("dp_status",e.target.value)}
@@ -350,9 +373,23 @@ function Avancement({d,save,toast}){
             <option value="">-- Statut DP --</option>
             {DP_STATUSES.map(s=><option key={s}>{s}</option>)}
           </select>}
+          {/* Dropdown statut CONSUEL */}
+          {isCons&&<select value={consSt} onChange={e=>upd("cons_status",e.target.value)}
+            style={{width:"auto",fontSize:11,padding:"3px 7px",fontWeight:600,
+              background:consStColor?consStColor.bg:"var(--bg2)",
+              borderColor:consStColor?consStColor.border:"var(--bd)",
+              color:consStColor?consStColor.tx:"var(--tx3)"}}>
+            <option value="">-- Statut CONSUEL --</option>
+            {CONS_STATUSES.map(s=><option key={s}>{s}</option>)}
+          </select>}
           {/* Dropdown statut Raccordement */}
-          {checked&&isRacc&&<select value={av.racc_status||""} onChange={e=>upd("racc_status",e.target.value)} style={{width:"auto",fontSize:11,padding:"3px 7px",background:av.racc_status?"var(--or-l)":"var(--bg2)",borderColor:av.racc_status?"var(--or)":"var(--bd)",fontWeight:600,color:av.racc_status?"var(--or)":"var(--tx3)"}}>
-            <option value="">-- Statut --</option>{RACC_STATUSES.map(rs=><option key={rs}>{rs}</option>)}
+          {isRacc&&<select value={raccSt} onChange={e=>upd("racc_status",e.target.value)}
+            style={{width:"auto",fontSize:11,padding:"3px 7px",fontWeight:600,
+              background:raccStColor?raccStColor.bg:av.racc_status?"var(--or-l)":"var(--bg2)",
+              borderColor:raccStColor?raccStColor.border:av.racc_status?"var(--or)":"var(--bd)",
+              color:raccStColor?raccStColor.tx:av.racc_status?"var(--or)":"var(--tx3)"}}>
+            <option value="">-- Statut --</option>
+            {RACC_STATUSES.map(rs=><option key={rs}>{rs}</option>)}
           </select>}
         </div>
         <div className="av-body">
@@ -361,12 +398,19 @@ function Avancement({d,save,toast}){
               <label className="lbl">{isDP?"Date de dépôt / envoi":"Date"}</label>
               <input type="date" value={date} onChange={e=>upd(st.sentKey,e.target.value)}/>
             </div>
-            {/* Date de statut DP (ex : date de réception du récépissé) */}
+            {/* Date du statut DP */}
             {isDP&&<div className="fg" style={{marginTop:8}}>
               <label className="lbl">Date du statut
                 {dpSt&&<span style={{marginLeft:6,fontSize:10,fontWeight:700,color:dpStColor?.tx,background:dpStColor?.bg,padding:"1px 6px",borderRadius:8,border:`1px solid ${dpStColor?.border}`}}>{dpSt}</span>}
               </label>
               <input type="date" value={av.dp_status_date||""} onChange={e=>upd("dp_status_date",e.target.value)}/>
+            </div>}
+            {/* Date du statut Raccordement — uniquement pour les 3 statuts avec date */}
+            {isRacc&&raccNeedsDate&&<div className="fg" style={{marginTop:8}}>
+              <label className="lbl">Date — {raccSt}
+                <span style={{marginLeft:6,fontSize:10,fontWeight:700,color:raccStColor?.tx,background:raccStColor?.bg,padding:"1px 6px",borderRadius:8,border:`1px solid ${raccStColor?.border}`}}>{raccSt}</span>
+              </label>
+              <input type="date" value={av.racc_status_date||""} onChange={e=>upd("racc_status_date",e.target.value)}/>
             </div>}
           </div>
           <div className="av-right">
