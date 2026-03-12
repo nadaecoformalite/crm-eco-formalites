@@ -300,7 +300,7 @@ function Login({onLogin}){
       <div className="fg"><label className="lbl">Mot de passe</label><input type="password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="••••••••"/></div>
       <button className="btn btn-p" style={{width:"100%",justifyContent:"center",padding:10,marginTop:4}} onClick={go}><Ic n="lock" s={13}/>Se connecter</button>
     </div>
-    <div style={{marginTop:14,padding:11,background:"var(--bg3)",borderRadius:"var(--r)",fontSize:11,color:"var(--tx3)",lineHeight:1.9,border:"1px solid var(--bd)"}}><strong style={{color:"var(--tx2)"}}>Demo :</strong><br/>superadmin@crm.fr / admin2024<br/>admin@crm.fr / admin123</div>
+    <div style={{marginTop:14,padding:11,background:"var(--bg3)",borderRadius:"var(--r)",fontSize:11,color:"var(--tx3)",lineHeight:1.9,border:"1px solid var(--bd)"}}><strong style={{color:"var(--tx2)"}}>Demo :</strong><br/>superadmin@crm.fr/ admin2024<br/>admin@crm.fr / admin123</div>
   </div></div>;
 }
 
