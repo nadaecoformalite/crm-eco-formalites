@@ -106,7 +106,7 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=DM+Mono:wght@400;500&display=swap');
 :root{--or:#E8501A;--or-l:#FEF0EB;--or-d:#c43e10;--bg:#F5F5F0;--bg2:#ffffff;--bg3:#FAFAF8;--bd:#E8E8E0;--bd2:#D0D0C8;--tx:#1A1A16;--tx2:#3D3D35;--tx3:#6B6B60;--tx4:#A0A090;--gr:#1A7A4A;--gr-l:#EDFAF3;--re:#C8260E;--re-l:#FEF0EE;--bl:#1A4A8A;--bl-l:#EEF3FD;--pu:#6B35C8;--pu-l:#F3EFFE;--ff:'DM Sans',-apple-system,sans-serif;--fm:'DM Mono',monospace;--sh:0 1px 3px rgba(0,0,0,.06);--shm:0 4px 14px rgba(0,0,0,.09);--shl:0 16px 40px rgba(0,0,0,.14),0 4px 10px rgba(0,0,0,.07);--r:10px;--rl:14px;}
 [data-theme="dark"]{--bg:#0E0E0D;--bg2:#1A1A18;--bg3:#222220;--bd:#2A2A28;--bd2:#363634;--tx:#F2F2EE;--tx2:#D0D0C8;--tx3:#909088;--tx4:#585850;--or-l:rgba(232,80,26,.18);--gr-l:rgba(26,122,74,.18);--re-l:rgba(200,38,14,.18);--bl-l:rgba(26,74,138,.18);--pu-l:rgba(107,53,200,.18);}
-*{box-sizing:border-box;margin:0;padding:0;}body,html,#root{font-family:var(--ff);font-size:14px;color:var(--tx);background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased;}
+*{box-sizing:border-box;margin:0;padding:0;}body,html,#root{font-family:var(--ff);font-size:15.4px;color:var(--tx);background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased;}
 ::-webkit-scrollbar{width:4px;height:4px;}::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:4px;}
 .app{display:flex;min-height:100vh;}
 /* SIDEBAR — dark bg, white text always */
@@ -132,8 +132,9 @@ const CSS = `
 .sb-usr .uro{font-size:9px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.06em;}
 /* MAIN */
 .main{margin-left:248px;flex:1;display:flex;flex-direction:column;min-height:100vh;}
-.topbar{background:var(--bg2);border-bottom:2px solid var(--bd);padding:0 20px;height:56px;display:flex;align-items:center;gap:8px;position:sticky;top:0;z-index:50;}
-.tb-ttl{font-size:16px;font-weight:800;color:var(--tx);flex:1;letter-spacing:-.025em;}
+.topbar{background:var(--bg2);border-bottom:2px solid var(--bd);padding:0 12px;height:auto;min-height:56px;display:flex;align-items:center;gap:6px;position:sticky;top:0;z-index:50;flex-wrap:wrap;}
+.tb-ttl{font-size:16px;font-weight:800;color:var(--tx);white-space:nowrap;letter-spacing:-.025em;}
+.tb-flt{display:flex;align-items:center;gap:5px;flex-wrap:wrap;flex:1;}
 .content{padding:22px;flex:1;}
 /* BUTTONS */
 .btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:var(--r);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .15s;white-space:nowrap;font-family:var(--ff);}
@@ -456,7 +457,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
   const blank={client:"",client_org:"",email:"",phone:"",address:"",postal_code:"",dp_number:"",parcelle:"",
     date_envoi_dp:"",mairie_email:"",
     works:[{type:"PAC",formalites:["Demande Prealable"],kwc:"",kwc_c:""}],
-    status:"nouveau",assignee:EMPLOYEES[0],paid:false,amount:0,installed:false,
+    status:"nouveau",assignee:"",paid:false,amount:0,installed:false,
     docs:[],comments:[],avancement:{dp_checked:false,dp_envoi:"",dp_note:"",racc_checked:false,racc_date:"",racc_status:"",racc_note:"",cons_checked:false,cons_date:"",cons_note:"",tva_checked:false,tva_date:"",tva_note:""}
   };
   const [f,setF]=useState(initial?{...initial,works:(initial.works||[]).map(w=>({...w}))}:blank);
@@ -599,8 +600,22 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
   const [editing,setEditing]=useState(false);
   const [cmt,setCmt]=useState("");
   const [previewDoc,setPreviewDoc]=useState(null);
+  const [assignConfirm,setAssignConfirm]=useState(false);
   const fRef=useRef();
   const save=u=>{const nd={...d,...u,updated:new Date().toISOString().split("T")[0]};setD(nd);onUpdate(nd);};
+
+  const doSelfAssign=()=>{
+    save({assignee:currentUser.name,assign_by:currentUser.name,assign_at:new Date().toISOString()});
+    toast(currentUser.name+" s'est attribué ce dossier","s");
+    addNotif({type:"assign",msg:"Dossier "+d.client+" attribué à "+currentUser.name,dossier_id:d.id,date:new Date().toISOString()});
+    setAssignConfirm(false);
+  };
+  const isAssignedToMe=d.assignee===currentUser.name;
+  const isUnassigned=!d.assignee;
+  const handleSelfAssign=()=>{
+    if(isAssignedToMe)return;
+    if(!isUnassigned){setAssignConfirm(true);}else{doSelfAssign();}
+  };
   const addCmt=()=>{
     if(!cmt.trim())return;
     const nc={author:currentUser.name,date:new Date().toISOString().split("T")[0],text:cmt,from_client:false};
@@ -619,16 +634,35 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
   const tabLabel={info:"Informations",avancement:"Avancement",documents:"Documents",commentaires:"Commentaires",paiement:"Paiement"};
   return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
     {previewDoc&&<DocPreview doc={previewDoc} onClose={()=>setPreviewDoc(null)}/>}
+    {/* Popup confirmation attribution */}
+    {assignConfirm&&<div className="ov" style={{zIndex:10001}} onClick={()=>setAssignConfirm(false)}>
+      <div style={{background:"var(--bg2)",borderRadius:"var(--rl)",padding:28,maxWidth:400,width:"90%",boxShadow:"var(--shl)",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:28,marginBottom:12}}>⚠️</div>
+        <div style={{fontWeight:800,fontSize:15,marginBottom:8}}>Dossier déjà attribué</div>
+        <div style={{fontSize:13,color:"var(--tx3)",marginBottom:20}}>Ce dossier est actuellement attribué à <strong>{d.assignee}</strong>.<br/>Voulez-vous vous l'attribuer quand même ?</div>
+        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+          <button className="btn btn-p" onClick={doSelfAssign}>Oui, me l'attribuer</button>
+          <button className="btn btn-s" onClick={()=>setAssignConfirm(false)}>Annuler</button>
+        </div>
+      </div>
+    </div>}
     <div className="modal">
       <div className="mhdr">
         <div>
           <div style={{fontSize:10,color:"var(--or)",fontWeight:700,marginBottom:3,fontFamily:"var(--fm)"}}>{d.id} <span className="ago">• modifie il y a {timeAgo(d.updated)}</span></div>
           <h2 style={{fontSize:18,fontWeight:800}}>{d.client}</h2>
-          <div style={{fontSize:12,color:"var(--tx3)",marginTop:1}}>{d.address}</div>
+          <div style={{fontSize:13,color:"var(--tx3)",marginTop:1}}>{d.address}{d.postal_code&&<span style={{marginLeft:8,fontWeight:600,color:"var(--tx2)"}}>{d.postal_code}</span>}</div>
         </div>
         <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"flex-start"}}>
           <SBadge status={d.status}/>
           {d.installed&&<span style={{background:"#d1fae5",color:"#065f46",border:"1.5px solid #6ee7b7",padding:"3px 9px",borderRadius:20,fontSize:11,fontWeight:700}}>✓ Installe</span>}
+          {/* Bouton S'attribuer */}
+          {!isAssignedToMe&&<button className="btn btn-sm"
+            style={{background:isUnassigned?"#ecfdf5":"#fffbeb",border:"1.5px solid "+(isUnassigned?"#a7f3d0":"#fcd34d"),color:isUnassigned?"#059669":"#b45309",fontWeight:700}}
+            onClick={handleSelfAssign}>
+            {isUnassigned?"☝ S'attribuer":"☝ Me l'attribuer"}
+          </button>}
+          {isAssignedToMe&&<span style={{background:"#ecfdf5",border:"1.5px solid #a7f3d0",color:"#059669",padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>✓ Mon dossier</span>}
           <button className="btn btn-s btn-sm" onClick={()=>setEditing(true)}><Ic n="edit" s={11}/>Modifier</button>
           <button className="bic" onClick={onClose}><Ic n="x"/></button>
         </div>
@@ -642,7 +676,10 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
 
         {tab==="info"&&<div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-            <span className="asgn"><span className="av-ico">{d.assignee[0]}</span>{d.assignee}</span>
+            {d.assignee
+              ?<span className="asgn"><span className="av-ico">{d.assignee[0]}</span>{d.assignee}</span>
+              :<span style={{fontSize:12,color:"var(--tx4)",fontStyle:"italic",padding:"4px 10px",border:"1.5px dashed var(--bd2)",borderRadius:20}}>Non attribué</span>
+            }
             {d.client_org&&<span className="chip" style={{background:"var(--or-l)",color:"var(--or)",border:"1px solid rgba(232,80,26,.2)"}}>{d.client_org}</span>}
           </div>
           {/* Statut visible */}
@@ -914,9 +951,44 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
     setPreview(null);
   };
 
-  const getRacc=d=>d.avancement?.racc_checked?<span style={{background:"var(--gr-l)",color:"var(--gr)",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,border:"1px solid #a7f3d0"}}>✓ {d.avancement.racc_date||"OK"}{d.avancement.racc_status&&" — "+d.avancement.racc_status}</span>:<span style={{color:"var(--tx4)",fontSize:11}}>—</span>;
-  const getCons=d=>d.avancement?.cons_checked?<span style={{background:"var(--gr-l)",color:"var(--gr)",fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,border:"1px solid #a7f3d0"}}>✓ {d.avancement.cons_date||"OK"}</span>:<span style={{color:"var(--tx4)",fontSize:11}}>—</span>;
-  const getRec=d=>d.avancement?.dp_checked?<span style={{background:"var(--bl-l)",color:"var(--bl)",fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:4}}>✓ {d.avancement.dp_envoi||"OK"}</span>:<span style={{color:"var(--tx4)",fontSize:11}}>—</span>;
+  const getRacc=d=>{
+    const rs=d.avancement?.racc_status||"";
+    const rd=d.avancement?.racc_date||"";
+    if(!rs&&!rd)return <span style={{color:"var(--tx4)",fontSize:11}}>—</span>;
+    const raccStColor={
+      "Mise en service":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},
+      "Mise en service programmée":{bg:"#EEF3FD",border:"#bfdbfe",tx:"#1A4A8A"},
+      "Réenvoi":{bg:"#fef2f2",border:"#fca5a5",tx:"#dc2626"},
+      "Complet":{bg:"var(--gr-l)",border:"#a7f3d0",tx:"var(--gr)"},
+    };
+    const c=raccStColor[rs]||{bg:"var(--or-l)",border:"rgba(232,80,26,.3)",tx:"var(--or)"};
+    return <div style={{display:"flex",flexDirection:"column",gap:2}}>
+      {rs&&<span style={{background:c.bg,color:c.tx,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,border:"1px solid "+c.border}}>{rs}</span>}
+      {rd&&<span style={{fontSize:10,color:"var(--tx4)"}}>{rd}</span>}
+    </div>;
+  };
+  const getCons=d=>{
+    const cs=d.avancement?.cons_status||"";
+    const cd=d.avancement?.cons_date||"";
+    if(!cs&&!cd)return <span style={{color:"var(--tx4)",fontSize:11}}>—</span>;
+    const consColor={"Positif":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},"Envoyé au CONSUEL":{bg:"#EEF3FD",border:"#bfdbfe",tx:"#1A4A8A"}};
+    const c=consColor[cs]||{bg:"var(--gr-l)",border:"#a7f3d0",tx:"var(--gr)"};
+    return <div style={{display:"flex",flexDirection:"column",gap:2}}>
+      {cs&&<span style={{background:c.bg,color:c.tx,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,border:"1px solid "+c.border}}>{cs}</span>}
+      {cd&&<span style={{fontSize:10,color:"var(--tx4)"}}>{cd}</span>}
+    </div>;
+  };
+  const getRec=d=>{
+    const ds=d.avancement?.dp_status||"";
+    const de=d.avancement?.dp_envoi||"";
+    if(!ds&&!de&&!d.avancement?.dp_checked)return <span style={{color:"var(--tx4)",fontSize:11}}>—</span>;
+    const dpColor={"Récépissé reçu":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},"Incomplet":{bg:"#fffbeb",border:"#fcd34d",tx:"#b45309"},"Réenvoi":{bg:"#fef2f2",border:"#fca5a5",tx:"#dc2626"}};
+    const c=dpColor[ds]||{bg:"var(--bl-l)",border:"#bfdbfe",tx:"var(--bl)"};
+    return <div style={{display:"flex",flexDirection:"column",gap:2}}>
+      {ds&&<span style={{background:c.bg,color:c.tx,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,border:"1px solid "+c.border}}>{ds}</span>}
+      {de&&<span style={{fontSize:10,color:"var(--tx4)"}}>{de}</span>}
+    </div>;
+  };
 
   return <div>
     {confirm&&<Confirm msg={"Supprimer le dossier de "+confirm.client+" ?"} onOk={()=>del(confirm.id)} onNo={()=>setConfirm(null)}/>}
@@ -995,11 +1067,11 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
             {!filtered.length&&<tr><td colSpan={12} style={{textAlign:"center",padding:32,color:"var(--tx4)"}}>Aucun resultat</td></tr>}
             {filtered.map(d=><tr key={d.id} onClick={()=>setSel(d)}>
               <td><div style={{fontWeight:700,fontSize:11,color:"var(--or)",fontFamily:"var(--fm)",whiteSpace:"nowrap"}}>{d.id}</div><div className="ago">modifie {timeAgo(d.updated)}</div></td>
-              <td><div style={{fontWeight:700,fontSize:12}}>{d.client}</div>{d.client_org&&<div style={{fontSize:10,color:"var(--tx4)"}}>{d.client_org}</div>}</td>
+              <td><div style={{fontWeight:700,fontSize:14}}>{d.client}</div>{d.client_org&&<div style={{fontSize:11,color:"var(--tx4)"}}>{d.client_org}</div>}</td>
               <td><div style={{display:"flex",flexWrap:"wrap",gap:3}}>{(d.works||[]).map((w,i)=><WChip key={i} type={w.type}/>)}</div></td>
-              <td style={{fontSize:11,color:"var(--tx3)",maxWidth:130,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.address}</td>
+              <td style={{maxWidth:160}}><div style={{fontSize:12,color:"var(--tx2)",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.address}</div>{d.postal_code&&<div style={{fontSize:12,fontWeight:700,color:"var(--tx3)",marginTop:1}}>{d.postal_code}</div>}</td>
               <td><SBadge status={d.status}/>{d.installed&&<div style={{marginTop:3,fontSize:10,color:"#065f46",fontWeight:700}}>✓ Installe</div>}</td>
-              {isSA&&<td><span className="asgn"><span className="av-ico">{d.assignee[0]}</span>{d.assignee}</span></td>}
+              {isSA&&<td>{d.assignee?<span className="asgn"><span className="av-ico">{d.assignee[0]}</span>{d.assignee}</span>:<span style={{fontSize:11,color:"var(--tx4)",fontStyle:"italic"}}>—</span>}</td>}
               <td>{getRacc(d)}</td><td>{getCons(d)}</td><td>{getRec(d)}</td>
               {isSA&&<td><span style={{color:d.paid?"var(--gr)":"var(--tx4)",fontSize:11,fontWeight:600}}>{d.paid?"✓ Paye":"—"}</span></td>}
               <td onClick={e=>e.stopPropagation()}><div style={{display:"flex",gap:4}}>
@@ -1328,47 +1400,35 @@ export default function App(){
           <button className="bic" style={{display:"none"}} onClick={()=>setSbOpen(o=>!o)}><Ic n="menu" c="var(--tx2)"/></button>
           <div className="tb-ttl">{titles[page]||"CRM"}</div>
 
-          {/* Filters — always visible */}
-          <div className="tb-flt" style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-            {/* Nom client */}
+          {/* Filters — compact, left-aligned */}
+          <div className="tb-flt">
             <input className={"fsel"+(globalFilters.client_name?" on":"")}
               value={globalFilters.client_name}
               onChange={e=>setGlobalFilters(f=>({...f,client_name:e.target.value}))}
-              placeholder="Nom client..."
-              style={{minWidth:110,maxWidth:150}}/>
-            {/* Statut */}
+              placeholder="Client..."
+              style={{width:100}}/>
             <select className={"fsel"+(globalFilters.status?" on":"")} value={globalFilters.status} onChange={e=>setFilter("status",e.target.value)}>
               <option value="">Statut</option>{ALL_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
             <select className={"fsel"+(globalFilters.assignee?" on":"")} value={globalFilters.assignee} onChange={e=>setFilter("assignee",e.target.value)}>
-              <option value="">Responsable</option>{EMPLOYEES.map(e=><option key={e}>{e}</option>)}
+              <option value="">Resp.</option>{EMPLOYEES.map(e=><option key={e}>{e}</option>)}
             </select>
             <select className={"fsel"+(globalFilters.work?" on":"")} value={globalFilters.work} onChange={e=>setFilter("work",e.target.value)}>
               <option value="">Travaux</option>{WORK_TYPES.map(t=><option key={t}>{t}</option>)}
             </select>
             <select className={"fsel"+(globalFilters.formalite?" on":"")} value={globalFilters.formalite} onChange={e=>setFilter("formalite",e.target.value)}>
-              <option value="">Formalite</option>{FORMALITES.map(f=><option key={f}>{f}</option>)}
+              <option value="">Formalité</option>{FORMALITES.map(f=><option key={f}>{f}</option>)}
             </select>
-            {/* Date création depuis */}
-            <div style={{display:"flex",alignItems:"center",gap:3}}>
-              <span style={{fontSize:10,color:"var(--tx4)",whiteSpace:"nowrap",fontWeight:600}}>Créé ≥</span>
-              <input type="date"
-                className={"fsel"+(globalFilters.date_created?" on":"")}
-                value={globalFilters.date_created}
-                onChange={e=>setGlobalFilters(f=>({...f,date_created:e.target.value}))}
-                style={{width:130}}
-                title="Créé depuis (date)"/>
-            </div>
-            {/* Date modification depuis */}
-            <div style={{display:"flex",alignItems:"center",gap:3}}>
-              <span style={{fontSize:10,color:"var(--tx4)",whiteSpace:"nowrap",fontWeight:600}}>Modifié ≥</span>
-              <input type="date"
-                className={"fsel"+(globalFilters.date_updated?" on":"")}
-                value={globalFilters.date_updated}
-                onChange={e=>setGlobalFilters(f=>({...f,date_updated:e.target.value}))}
-                style={{width:130}}
-                title="Modifié depuis (date)"/>
-            </div>
+            <input type="date" title="Créé depuis"
+              className={"fsel"+(globalFilters.date_created?" on":"")}
+              value={globalFilters.date_created}
+              onChange={e=>setGlobalFilters(f=>({...f,date_created:e.target.value}))}
+              style={{width:120}}/>
+            <input type="date" title="Modifié depuis"
+              className={"fsel"+(globalFilters.date_updated?" on":"")}
+              value={globalFilters.date_updated}
+              onChange={e=>setGlobalFilters(f=>({...f,date_updated:e.target.value}))}
+              style={{width:120}}/>
             {hasFilter&&<button className="btn btn-d btn-sm" onClick={()=>setGlobalFilters({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""})}><Ic n="x" s={11}/>Reset</button>}
           </div>
 
