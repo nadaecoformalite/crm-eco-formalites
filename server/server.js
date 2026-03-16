@@ -153,6 +153,11 @@ db.serialize(() => {
     `ALTER TABLE dossiers ADD COLUMN mairie_email TEXT`,
     `ALTER TABLE dossiers ADD COLUMN relance_recepisee_at TEXT`,
     `ALTER TABLE dossiers ADD COLUMN relance_accord_dp_at TEXT`,
+    // ── KBIS extraction columns ──
+    `ALTER TABLE dossiers ADD COLUMN siret TEXT`,
+    `ALTER TABLE dossiers ADD COLUMN company_name TEXT`,
+    `ALTER TABLE dossiers ADD COLUMN representant TEXT`,
+    `ALTER TABLE dossiers ADD COLUMN kbis_address TEXT`,
   ];
   migrations.forEach(sql => {
     db.run(sql, err => {
@@ -177,7 +182,7 @@ app.use('/api/documents', documentsRouter);
 
 // ── Dossiers ──────────────────────────────────────────────────────────────────
 
-const DOSSIER_COLS = 'id,client,client_org,email,phone,address,postal_code,dp_number,parcelle,works,status,assignee,created,updated,paid,amount,installed,docs,comments,avancement,client_access,client_token';
+const DOSSIER_COLS = 'id,client,client_org,email,phone,address,postal_code,dp_number,parcelle,works,status,assignee,created,updated,paid,amount,installed,docs,comments,avancement,client_access,client_token,siret,company_name,representant,kbis_address';
 
 function parseDossier(row) {
   return {
@@ -220,15 +225,16 @@ app.post('/api/dossiers', (req, res) => {
   const d = req.body;
   const now = new Date().toISOString();
   db.run(
-    `INSERT INTO dossiers (id,client,client_org,email,phone,address,postal_code,dp_number,parcelle,works,status,assignee,created,updated,paid,amount,installed,docs,comments,avancement,client_access,client_token)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO dossiers (id,client,client_org,email,phone,address,postal_code,dp_number,parcelle,works,status,assignee,created,updated,paid,amount,installed,docs,comments,avancement,client_access,client_token,siret,company_name,representant,kbis_address)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [d.id, d.client, d.client_org||null, d.email||null, d.phone||null, d.address||null,
      d.postal_code||null, d.dp_number||null, d.parcelle||null,
      JSON.stringify(d.works||[]), d.status||'nouveau', d.assignee||null,
      d.created||now, d.updated||now,
      d.paid?1:0, d.amount||0, d.installed?1:0,
      JSON.stringify(d.docs||[]), JSON.stringify(d.comments||[]), JSON.stringify(d.avancement||{}),
-     d.client_access?1:0, d.client_token||null],
+     d.client_access?1:0, d.client_token||null,
+     d.siret||null, d.company_name||null, d.representant||null, d.kbis_address||null],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ id: d.id, message: 'Dossier créé' });
@@ -240,13 +246,14 @@ app.put('/api/dossiers/:id', (req, res) => {
   const d = req.body;
   const now = new Date().toISOString();
   db.run(
-    `UPDATE dossiers SET client=?,client_org=?,email=?,phone=?,address=?,postal_code=?,dp_number=?,parcelle=?,works=?,status=?,assignee=?,updated=?,paid=?,amount=?,installed=?,docs=?,comments=?,avancement=?,client_access=? WHERE id=?`,
+    `UPDATE dossiers SET client=?,client_org=?,email=?,phone=?,address=?,postal_code=?,dp_number=?,parcelle=?,works=?,status=?,assignee=?,updated=?,paid=?,amount=?,installed=?,docs=?,comments=?,avancement=?,client_access=?,siret=?,company_name=?,representant=?,kbis_address=? WHERE id=?`,
     [d.client, d.client_org||null, d.email||null, d.phone||null, d.address||null,
      d.postal_code||null, d.dp_number||null, d.parcelle||null,
      JSON.stringify(d.works||[]), d.status, d.assignee||null,
      d.updated||now, d.paid?1:0, d.amount||0, d.installed?1:0,
      JSON.stringify(d.docs||[]), JSON.stringify(d.comments||[]), JSON.stringify(d.avancement||{}),
-     d.client_access?1:0, req.params.id],
+     d.client_access?1:0, d.siret||null, d.company_name||null, d.representant||null, d.kbis_address||null,
+     req.params.id],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ message: 'Dossier mis à jour' });

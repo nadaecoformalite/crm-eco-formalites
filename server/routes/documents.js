@@ -189,21 +189,21 @@ router.post('/upload/:dossierId', upload.array('files', 10), async (req, res) =>
     });
   }
 
-  // If KBIS data was extracted, optionally update dossier fields
+  // If KBIS data was extracted, update dossier fields
   if (extractedData?.kbis && dossierId) {
     const { siret, company_name, address, representant } = extractedData.kbis;
-    const updates = [];
-    const vals = [];
-    if (siret)        { updates.push('siret_extracted=?'); vals.push(siret); }
-    // Store in a new field — we won't overwrite existing client data without confirmation
-    // (The front-end asks for confirmation before applying)
-    // For now, log it as a comment on the dossier
-    const note = `KBIS importé — ${company_name || ''} | SIRET: ${siret || ''} | Adresse: ${address || ''} | Représentant: ${representant || ''}`.trim();
+    const kbisUpdates = ['updated=?'];
+    const kbisVals = [now];
+    if (siret)        { kbisUpdates.push('siret=?'); kbisVals.push(siret); }
+    if (company_name) { kbisUpdates.push('company_name=?'); kbisVals.push(company_name); }
+    if (address)      { kbisUpdates.push('kbis_address=?'); kbisVals.push(address); }
+    if (representant) { kbisUpdates.push('representant=?'); kbisVals.push(representant); }
+    if (company_name) { kbisUpdates.push('client_org=?'); kbisVals.push(company_name); }
+    kbisVals.push(dossierId);
     req.db.run(
-      `UPDATE dossiers SET updated=? WHERE id=?`,
-      [now, dossierId]
+      `UPDATE dossiers SET ${kbisUpdates.join(',')} WHERE id=?`,
+      kbisVals
     );
-    // Return extracted KBIS data so front-end can show confirmation dialog
   }
 
   res.json({
@@ -255,6 +255,13 @@ router.post('/apply-extracted/:dossierId', (req, res) => {
   const vals = [now];
 
   if (dp_number) { updates.push('dp_number=?'); vals.push(dp_number); }
+  if (kbis?.siret) { updates.push('siret=?'); vals.push(kbis.siret); }
+  if (kbis?.company_name) { updates.push('company_name=?'); vals.push(kbis.company_name); }
+  if (kbis?.address) { updates.push('kbis_address=?'); vals.push(kbis.address); }
+  if (kbis?.representant) { updates.push('representant=?'); vals.push(kbis.representant); }
+  // Also update client_org with company name if provided
+  if (kbis?.company_name) { updates.push('client_org=?'); vals.push(kbis.company_name); }
+
   vals.push(req.params.dossierId);
 
   req.db.run(
@@ -262,11 +269,6 @@ router.post('/apply-extracted/:dossierId', (req, res) => {
     vals,
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
-
-      // If KBIS data, optionally update client_org
-      if (kbis?.company_name || kbis?.siret) {
-        // Return success — front-end handles org update separately
-      }
       res.json({ message: 'Données appliquées au dossier' });
     }
   );

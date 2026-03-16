@@ -90,14 +90,56 @@ async function extractDP(file){
 async function extractKbis(file){
   try{
     const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
-    let txt="";
-    for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const ct=await pg.getTextContent();ct.items.forEach(it=>{txt+=it.str+" ";});}
-    const siretM=txt.match(/\b\d{3}\s?\d{3}\s?\d{3}\s?\d{5}\b/);
-    const siret=siretM?siretM[0].replace(/\s/g,"").replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4"):null;
-    return siret;
+    let raw="";
+    for(let i=1;i<=Math.min(pdf.numPages,2);i++){const pg=await pdf.getPage(i);const ct=await pg.getTextContent();let prev=null;ct.items.forEach(it=>{if(prev&&it.transform&&prev.transform){if(Math.abs(it.transform[4]-(prev.transform[4]+(prev.width||0)))>3)raw+=" ";}raw+=it.str;prev=it;});raw+="\n";}
+    const text=raw.split("\n").map(l=>l.replace(/\s{2,}/g," ").trim()).join("\n");
+    // Helper : valeur après un libellé
+    function after(lbl){
+      const m1=text.match(new RegExp(lbl+"[\\s:–-]*([^\\n]{2,100})","i"));
+      if(m1){const v=m1[1].trim().replace(/^[:–\-\s]+/,"");if(v.length>1)return v;}
+      const m2=text.match(new RegExp(lbl+"[^\\n]*\\n([^\\n]{2,100})","i"));
+      if(m2)return m2[1].trim().replace(/^[:–\-\s]+/,"");
+      return null;
+    }
+    // Dénomination sociale
+    const company_name=after("D[eé]nomination\\s+sociale")||after("D[eé]nomination")||after("Raison\\s+sociale")||null;
+    // SIRET / SIREN
+    let siret=null;
+    const rcsBlock=text.match(/Immatriculation\s+au\s+RCS[^\n]{0,80}\n?([^\n]{0,80})/i);
+    if(rcsBlock){const numM=(rcsBlock[0]+(rcsBlock[1]||"")).match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}(?:[\s.]?\d{5})?)\b/);if(numM){const d=numM[1].replace(/[\s.]/g,"");if(d.length===14)siret=d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4");else if(d.length===9)siret=d.replace(/(\d{3})(\d{3})(\d{3})/,"$1 $2 $3");}}
+    if(!siret){const fb=text.match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s.]?\d{5})\b/);if(fb){const d=fb[1].replace(/[\s.]/g,"");siret=d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4");}}
+    // Adresse
+    const address=after("Adresse\\s+du\\s+si[èe]ge\\s+social")||after("Adresse\\s+du\\s+si[èe]ge")||after("Si[èe]ge\\s+social")||null;
+    // Représentant
+    const representant=after("Repr[eé]sentant(?:s)?\\s+l[eé]gaux?")||after("G[eé]rant")||after("Pr[eé]sident")||after("Directeur\\s+g[eé]n[eé]ral")||null;
+    const clean=v=>v?v.replace(/\.{2,}/g,"").replace(/^\W+/,"").trim():null;
+    return {siret:clean(siret),company_name:clean(company_name),address:clean(address),representant:clean(representant)};
   }catch{return null;}
 }
 
+import { useState } from 'react';
+import ClientFormModal from './components/ClientFormModal_Complete';
+
+export default function App() {
+  const [showModal, setShowModal] = useState(false);
+
+  return (
+    <>
+      <button onClick={() => setShowModal(true)}>
+        + Nouveau client
+      </button>
+
+      <ClientFormModal
+        isOpen={showModal}
+        onClose={() => setShowModal(false)}
+        onSave={(client) => {
+          console.log('Nouveau client:', client);
+          // Envoyer à votre API
+        }}
+      />
+    </>
+  );
+}
 // CSS
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=DM+Mono:wght@400;500&display=swap');
@@ -455,7 +497,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
   // Décompose client en prénom / nom pour l'édition
   const splitName=(full="")=>{const parts=(full||"").trim().split(/\s+/);return {prenom:parts[0]||"",nom:parts.slice(1).join(" ")||""};};
   const blank={client:"",client_prenom:"",client_nom:"",client_org:"",email:"",phone:"",address:"",postal_code:"",dp_number:"",parcelle:"",
-    date_envoi_dp:"",mairie_email:"",
+    date_envoi_dp:"",mairie_email:"",siret:"",company_name:"",representant:"",kbis_address:"",
     works:[{type:"PAC",formalites:["Demande Prealable"],kwc:"",kwc_c:""}],
     status:"en_attente",assignee:"",paid:false,amount:0,installed:false,
     docs:[],comments:[],avancement:{dp_checked:false,dp_envoi:"",dp_note:"",racc_checked:false,racc_date:"",racc_status:"",racc_note:"",cons_checked:false,cons_date:"",cons_note:"",tva_checked:false,tva_date:"",tva_note:""}
@@ -465,13 +507,31 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
     :blank;
   const [f,setF]=useState(initForm);
   const [sc,setSc]=useState(false);const [dpR,setDpR]=useState(null);
+  const [kbSc,setKbSc]=useState(false);const [kbR,setKbR]=useState(null);
   const [iCmt,setICmt]=useState("");const [newOrg,setNewOrg]=useState("");const [showOrg,setShowOrg]=useState(false);
-  const pRef=useRef();
+  const pRef=useRef();const kbRef=useRef();
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const setW=(i,k,v)=>{const w=[...f.works];w[i]={...w[i],[k]:v};set("works",w);};
   const togFmt=(i,fm)=>{const w=[...f.works];const cur=w[i].formalites||[];w[i]={...w[i],formalites:cur.includes(fm)?cur.filter(x=>x!==fm):[...cur,fm]};set("works",w);};
   const needKwc=t=>["Panneaux Solaires","Systeme Solaire Combine"].includes(t);
   const scanPdf=async(file)=>{setSc(true);setDpR(null);const dp=await extractDP(file);setSc(false);if(dp){setDpR(dp);set("dp_number",dp);}else setDpR("none");};
+  const scanKbis=async(file)=>{
+    if(!file.type.includes("pdf"))return setKbR({error:"Seuls les PDF sont acceptés"});
+    setKbSc(true);setKbR(null);
+    const res=await extractKbis(file);
+    setKbSc(false);
+    if(res&&(res.siret||res.company_name)){
+      setKbR(res);
+      if(res.company_name)set("company_name",res.company_name);
+      if(res.siret)set("siret",res.siret);
+      if(res.address)set("kbis_address",res.address);
+      if(res.representant)set("representant",res.representant);
+      // Pré-remplir aussi client_org si vide
+      if(res.company_name&&!f.client_org)set("client_org",res.company_name);
+      // Pré-remplir adresse si vide
+      if(res.address&&!f.address)set("address",res.address);
+    }else{setKbR({error:"Aucune donnée KBIS trouvée dans ce PDF"});}
+  };
   const save=()=>{
     const fullName=`${f.client_prenom||""} ${f.client_nom||""}`.trim()||f.client||"";
     if(!fullName)return;
@@ -540,6 +600,28 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
                 </div>
               </div>
             </div>
+            {/* KBIS Scanner */}
+            <div style={{background:"#EEF3FD",border:"1.5px solid #b3c7ed",borderRadius:"var(--rl)",padding:14,marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#1A4A8A",marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>🏢 Extraction KBIS — Pré-remplissage automatique</div>
+              <div
+                onDrop={e=>{e.preventDefault();if(e.dataTransfer.files?.[0])scanKbis(e.dataTransfer.files[0]);}}
+                onDragOver={e=>e.preventDefault()}
+                onClick={()=>!kbSc&&kbRef.current?.click()}
+                style={{border:"2px dashed #93a7d1",borderRadius:"var(--r)",padding:"18px 12px",textAlign:"center",cursor:kbSc?"not-allowed":"pointer",background:kbSc?"#f8fafc":"#fff",transition:"all .15s"}}
+              >
+                <input ref={kbRef} type="file" accept=".pdf,application/pdf" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])scanKbis(e.target.files[0]);e.target.value="";}}/>
+                {kbSc?<div style={{display:"flex",gap:6,justifyContent:"center",fontSize:12,color:"var(--tx3)"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>Analyse du KBIS en cours...</div>
+                :<div><div style={{fontSize:13,fontWeight:600,color:"#1A4A8A"}}>Glisser un PDF KBIS ici</div><div style={{fontSize:11,color:"#6B6B60",marginTop:3}}>ou cliquer pour selectionner — SIRET, entreprise, adresse et representant extraits automatiquement</div></div>}
+              </div>
+              {kbR&&!kbR.error&&<div style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:"var(--r)",padding:"10px 12px",marginTop:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:4}}>Donnees KBIS extraites avec succes</div>
+                {kbR.company_name&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Entreprise : </span><strong>{kbR.company_name}</strong></div>}
+                {kbR.siret&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>SIRET : </span><strong style={{fontFamily:"var(--fm)"}}>{kbR.siret}</strong></div>}
+                {kbR.address&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Adresse : </span><strong>{kbR.address}</strong></div>}
+                {kbR.representant&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Representant : </span><strong>{kbR.representant}</strong></div>}
+              </div>}
+              {kbR?.error&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"var(--r)",padding:"7px 10px",fontSize:11,color:"#b91c1c",marginTop:8}}>{kbR.error}</div>}
+            </div>
             {/* Client info */}
             <div className="sec" style={{marginBottom:12}}>Informations client</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
@@ -553,8 +635,11 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
                 </div>
                 {showOrg&&<div style={{display:"flex",gap:5,marginTop:5}}><input value={newOrg} onChange={e=>setNewOrg(e.target.value)} placeholder="Nom organisme..."/><button className="btn btn-p btn-sm" onClick={()=>{if(newOrg.trim()){onAddOrg(newOrg.trim());set("client_org",newOrg.trim());setNewOrg("");setShowOrg(false);}}}><Ic n="check" s={11}/></button></div>}
               </div>
+              <div className="fg"><label className="lbl">SIRET</label><input value={f.siret||""} onChange={e=>set("siret",e.target.value)} placeholder="828 289 215 00015" style={{fontFamily:"var(--fm)"}}/></div>
               <div className="fg"><label className="lbl">Email</label><input type="email" value={f.email} onChange={e=>set("email",e.target.value)}/></div>
               <div className="fg"><label className="lbl">Telephone</label><input value={f.phone} onChange={e=>set("phone",e.target.value)}/></div>
+              <div className="fg"><label className="lbl">Representant legal</label><input value={f.representant||""} onChange={e=>set("representant",e.target.value)} placeholder="Nom du representant"/></div>
+              <div className="fg"><label className="lbl">Denomination sociale</label><input value={f.company_name||""} onChange={e=>set("company_name",e.target.value)} placeholder="Nom de l'entreprise"/></div>
               <div className="fg" style={{gridColumn:"1/-1"}}><label className="lbl">Adresse</label><input value={f.address} onChange={e=>set("address",e.target.value)}/></div>
               <div className="fg"><label className="lbl">Code postal</label><input value={f.postal_code} onChange={e=>set("postal_code",e.target.value)}/></div>
               <div className="fg"><label className="lbl">Parcelle cadastrale</label><input value={f.parcelle} onChange={e=>set("parcelle",e.target.value)} placeholder="Ex: AB 0012"/></div>
