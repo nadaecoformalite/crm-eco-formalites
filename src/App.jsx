@@ -117,29 +117,6 @@ async function extractKbis(file){
   }catch{return null;}
 }
 
-import { useState } from 'react';
-import ClientFormModal from './components/ClientFormModal_Complete';
-
-export default function App() {
-  const [showModal, setShowModal] = useState(false);
-
-  return (
-    <>
-      <button onClick={() => setShowModal(true)}>
-        + Nouveau client
-      </button>
-
-      <ClientFormModal
-        isOpen={showModal}
-        onClose={() => setShowModal(false)}
-        onSave={(client) => {
-          console.log('Nouveau client:', client);
-          // Envoyer à votre API
-        }}
-      />
-    </>
-  );
-}
 // CSS
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=DM+Mono:wght@400;500&display=swap');
@@ -186,6 +163,7 @@ const CSS = `
 .bic{padding:6px;border-radius:7px;background:var(--bg3);border:1.5px solid var(--bd);color:var(--tx3);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:all .15s;}
 .bic:hover{background:var(--bg2);color:var(--tx);}
 .dtog{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:8px;background:var(--bg3);border:1.5px solid var(--bd);cursor:pointer;font-size:14px;flex-shrink:0;}
+.tb-xls{transition:border-color .15s,box-shadow .15s;}.tb-xls:hover{border-color:var(--or)!important;box-shadow:0 0 0 1px var(--or);}
 /* CARDS */
 .card{background:var(--bg2);border:1.5px solid var(--bd);border-radius:var(--rl);padding:18px;box-shadow:var(--sh);}
 .scard{background:var(--bg2);border:1.5px solid var(--bd);border-radius:var(--rl);padding:16px;position:relative;overflow:hidden;box-shadow:var(--sh);transition:all .2s;}
@@ -331,9 +309,9 @@ function Confirm({msg,onOk,onNo}){
 }
 
 // ── LOGIN ──
-function Login({onLogin}){
+function Login({onLogin,users}){
   const [em,setEm]=useState("");const [pw,setPw]=useState("");const [err,setErr]=useState("");
-  const go=()=>{const u=INIT_USERS.find(x=>x.email===em&&x.password===pw);u?onLogin(u):setErr("Identifiants incorrects.");};
+  const go=()=>{const u=users.find(x=>x.email===em&&x.password===pw);u?onLogin(u):setErr("Identifiants incorrects.");};
   return <div className="lpg"><div className="lcard">
     <div style={{textAlign:"center",marginBottom:26}}><img src={LOGO_SRC} alt="Eco Formalites" style={{height:42,objectFit:"contain",marginBottom:14}}/><p style={{color:"var(--tx3)",fontSize:12}}>Espace de gestion des dossiers</p></div>
     {err&&<div style={{background:"var(--re-l)",border:"1px solid #fbb",borderRadius:"var(--r)",padding:9,color:"var(--re)",fontSize:12,marginBottom:11}}>{err}</div>}
@@ -558,7 +536,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
                 <select value={f.status} onChange={e=>set("status",e.target.value)}>{ALL_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}</select>
                 <div style={{marginTop:4}}><SBadge status={f.status}/></div>
               </div>
-              <div className="fg"><label className="lbl">Responsable</label><select value={f.assignee} onChange={e=>set("assignee",e.target.value)}>{EMPLOYEES.map(e=><option key={e}>{e}</option>)}</select></div>
+              <div className="fg"><label className="lbl">Responsable</label><select value={f.assignee} onChange={e=>set("assignee",e.target.value)}><option value="">-- Non attribué --</option>{EMPLOYEES.map(e=><option key={e}>{e}</option>)}</select></div>
             </div>
             {/* Scanner DP */}
             <div className="fg" style={{marginBottom:16}}>
@@ -1416,17 +1394,66 @@ function Profil({currentUser,users,setUsers,toast}){
 }
 
 // ── ADMIN ──
-function Admin({users,toast}){
+function Admin({users,setUsers,toast}){
+  const [showForm,setShowForm]=useState(false);
+  const [nName,setNName]=useState("");const [nEmail,setNEmail]=useState("");const [nPwd,setNPwd]=useState("");const [nRole,setNRole]=useState("employee");
+  const [delConfirm,setDelConfirm]=useState(null);
+
+  const roleColors={superadmin:{bg:"#fffbeb",color:"#b45309",border:"#fcd34d"},admin:{bg:"var(--or-l)",color:"var(--or)",border:"rgba(232,80,26,.2)"},employee:{bg:"var(--bl-l,#e0f2fe)",color:"var(--bl,#0284c7)",border:"rgba(2,132,199,.2)"},client:{bg:"var(--gr-l)",color:"var(--gr)",border:"rgba(34,197,94,.2)"}};
+  const rc=r=>roleColors[r]||roleColors.employee;
+
+  const addUser=()=>{
+    if(!nName.trim()||!nEmail.trim()||!nPwd.trim()){toast("Remplissez tous les champs","e");return;}
+    if(users.find(u=>u.email===nEmail.trim())){toast("Cet email existe deja","e");return;}
+    const initials=nName.trim().split(/\s+/).map(w=>w[0]).join("").toUpperCase().slice(0,2);
+    const newUser={id:Date.now(),name:nName.trim(),email:nEmail.trim(),password:nPwd.trim(),role:nRole,initials,avatar:null};
+    setUsers(p=>[...p,newUser]);
+    setNName("");setNEmail("");setNPwd("");setNRole("employee");setShowForm(false);
+    toast("Utilisateur "+newUser.name+" cree avec succes","s");
+  };
+
+  const removeUser=id=>{
+    setUsers(p=>p.filter(u=>u.id!==id));
+    setDelConfirm(null);
+    toast("Utilisateur supprime","s");
+  };
+
   return <div>
     <h2 style={{fontSize:19,fontWeight:800,marginBottom:18}}>Administration</h2>
     <div className="card" style={{marginBottom:12}}>
-      <h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>Utilisateurs ({users.length})</h3>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+        <h3 style={{fontSize:12,fontWeight:800,margin:0}}>Utilisateurs ({users.length})</h3>
+        <button className="btn btn-p btn-sm" onClick={()=>setShowForm(v=>!v)}><Ic n={showForm?"x":"plus"} s={11}/>{showForm?"Annuler":"Nouvel utilisateur"}</button>
+      </div>
+
+      {showForm&&<div style={{padding:14,background:"var(--bg3)",borderRadius:"var(--r)",border:"1.5px solid var(--bd)",marginBottom:14}}>
+        <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>Creer un utilisateur</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+          <div className="fg"><label className="lbl">Nom</label><input value={nName} onChange={e=>setNName(e.target.value)} placeholder="Jean Dupont"/></div>
+          <div className="fg"><label className="lbl">Email</label><input type="email" value={nEmail} onChange={e=>setNEmail(e.target.value)} placeholder="jean@email.fr"/></div>
+          <div className="fg"><label className="lbl">Mot de passe</label><input type="password" value={nPwd} onChange={e=>setNPwd(e.target.value)} placeholder="••••••••"/></div>
+          <div className="fg"><label className="lbl">Role</label><select value={nRole} onChange={e=>setNRole(e.target.value)}>
+            <option value="employee">Employe</option>
+            <option value="admin">Admin</option>
+            <option value="superadmin">Super Admin</option>
+            <option value="client">Client</option>
+          </select></div>
+        </div>
+        {nRole==="client"&&<div style={{padding:9,background:"var(--gr-l)",borderRadius:"var(--r)",fontSize:11,color:"var(--gr)",marginBottom:10,border:"1px solid rgba(34,197,94,.2)"}}>
+          <strong>Profil Client :</strong> Ce compte ne verra que les dossiers associes a son email. Navigation restreinte (Dossiers, Documents, Profil).
+        </div>}
+        <button className="btn btn-p btn-sm" onClick={addUser}><Ic n="check" s={11}/>Creer le compte</button>
+      </div>}
+
       {users.map(u=><div key={u.id} style={{display:"flex",alignItems:"center",gap:11,marginBottom:8,padding:"10px 12px",background:"var(--bg3)",borderRadius:"var(--r)",border:"1.5px solid var(--bd)"}}>
         <div className="av">{u.avatar?<img src={u.avatar} alt=""/>:u.initials}</div>
         <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"var(--tx4)"}}>{u.email}</div></div>
-        <span style={{padding:"2px 9px",borderRadius:20,fontSize:10,fontWeight:700,background:u.role==="superadmin"?"#fffbeb":"var(--or-l)",color:u.role==="superadmin"?"#b45309":"var(--or)",border:"1px solid "+(u.role==="superadmin"?"#fcd34d":"rgba(232,80,26,.2)")}}>{u.role}</span>
+        <span style={{padding:"2px 9px",borderRadius:20,fontSize:10,fontWeight:700,background:rc(u.role).bg,color:rc(u.role).color,border:"1px solid "+rc(u.role).border}}>{u.role}</span>
+        {delConfirm===u.id?<div style={{display:"flex",gap:4}}>
+          <button className="btn btn-sm" style={{background:"var(--re)",color:"#fff",border:"none",fontSize:10,padding:"3px 8px"}} onClick={()=>removeUser(u.id)}>Oui</button>
+          <button className="btn btn-s btn-sm" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>setDelConfirm(null)}>Non</button>
+        </div>:<button className="bic" style={{opacity:.4}} onClick={()=>setDelConfirm(u.id)} title="Supprimer"><Ic n="x" s={12}/></button>}
       </div>)}
-      <button className="btn btn-p btn-sm" style={{marginTop:7}} onClick={()=>toast("Invitation envoyee","s")}><Ic n="plus" s={11}/>Inviter</button>
     </div>
     <div className="card">
       <h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>Securite</h3>
@@ -1478,13 +1505,38 @@ export default function App(){
   const rmToast=id=>setToasts(t=>t.filter(x=>x.id!==id));
   const addNotif=n=>setNotifs(p=>[{...n,unread:true},...p]);
   const unread=notifs.filter(n=>n.unread).length;
+  const topXlsRef=useRef();
+  const topExportXLS=async()=>{
+    const XLSX=await loadXLSX();
+    const rows=dossiers.map(dossierToRow);
+    const ws=XLSX.utils.json_to_sheet(rows);
+    const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Dossiers");
+    const date=new Date().toISOString().slice(0,10);
+    XLSX.writeFile(wb,`SolarCRM_Export_${date}.xlsx`);
+    toast("Export Excel telecharge ("+dossiers.length+" dossiers)","s");
+  };
+  const topImportXLS=async(file)=>{
+    const XLSX=await loadXLSX();
+    const buf=await file.arrayBuffer();const wb=XLSX.read(buf);const ws=wb.Sheets[wb.SheetNames[0]];
+    const rows=XLSX.utils.sheet_to_json(ws);
+    if(!rows.length){toast("Fichier vide ou format incorrect","e");return;}
+    const imported=rows.map(rowToDossier).filter(d=>d.client);
+    if(!imported.length){toast("Aucun dossier valide trouvé","e");return;}
+    setDossiers(prev=>{const ids=new Set(prev.map(d=>d.id));const news=imported.filter(d=>!ids.has(d.id));return[...prev.map(d=>{const up=imported.find(i=>i.id===d.id);return up?{...d,...up}:d;}),...news];});
+    toast(imported.length+" dossier(s) importé(s)","s");
+  };
 
-  if(!user)return <><style>{CSS}</style><Login onLogin={u=>{setUser(u);setPage("dashboard");}}/><Toasts ts={toasts} rm={rmToast}/></>;
+  if(!user)return <><style>{CSS}</style><Login onLogin={u=>{setUser(u);setPage(u.role==="client"?"dossiers":"dashboard");}} users={users}/><Toasts ts={toasts} rm={rmToast}/></>;
 
   const isSA=user.role==="superadmin";
+  const isClient=user.role==="client";
   const curUser=users.find(u2=>u2.id===user.id)||user;
 
-  const navItems=[
+  const navItems=isClient?[
+    {id:"dossiers",icon:"folder",label:"Mes dossiers"},
+    {id:"ged",icon:"file",label:"Documents"},
+    {id:"profil",icon:"cam",label:"Mon profil"},
+  ]:[
     {id:"dashboard",icon:"bar",label:"Dashboard"},
     {id:"dossiers",icon:"folder",label:"Dossiers",badge:dossiers.filter(d=>!d.assignee).length},
     {id:"clients",icon:"users",label:"Clients",badge:clientsOrg.length},
@@ -1498,19 +1550,22 @@ export default function App(){
 
   const titles={dashboard:"Tableau de bord",dossiers:"Dossiers",clients:"Clients",paiements:"Paiements",ged:"GED — Documents",emails:"Emails",import:"Import",profil:"Mon profil",admin:"Administration"};
 
-  const setFilter=(k,v)=>setGlobalFilters(f=>({...f,[k]:f[k]===v?"":v}));
+  const setFilter=(k,v)=>{setGlobalFilters(f=>({...f,[k]:f[k]===v?"":v}));if(page!=="dossiers")setPage("dossiers");};
   const hasFilter=Object.values(globalFilters).some(Boolean);
 
+  // Client role: only see dossiers they created (matched by email)
+  const visibleDossiers=isClient?dossiers.filter(d=>d.email===user.email):dossiers;
+
   const pages={
-    dashboard:<Dashboard dossiers={dossiers}/>,
-    dossiers:<Dossiers dossiers={dossiers} setDossiers={setDossiers} currentUser={user} toast={toast} addNotif={addNotif} globalQ={globalQ} globalFilters={globalFilters} clientsOrg={clientsOrg} setClientsOrg={setClientsOrg}/>,
-    clients:<Clients dossiers={dossiers} clientsOrg={clientsOrg} setClientsOrg={setClientsOrg} toast={toast}/>,
-    paiements:<Paiements dossiers={dossiers} setDossiers={setDossiers} currentUser={user} toast={toast}/>,
-    ged:<div className="content"><GEDModule dossiers={dossiers} onDossierUpdate={(id,data)=>{setDossiers(ds=>ds.map(d=>d.id===id?{...d,...(data.dp_number?{dp_number:data.dp_number}:{})}:d));}}/></div>,
-    emails:<EmailModule dossiers={dossiers}/>,
+    dashboard:<Dashboard dossiers={visibleDossiers}/>,
+    dossiers:<Dossiers dossiers={visibleDossiers} setDossiers={setDossiers} currentUser={user} toast={toast} addNotif={addNotif} globalQ={globalQ} globalFilters={globalFilters} clientsOrg={clientsOrg} setClientsOrg={setClientsOrg}/>,
+    clients:<Clients dossiers={visibleDossiers} clientsOrg={clientsOrg} setClientsOrg={setClientsOrg} toast={toast}/>,
+    paiements:<Paiements dossiers={visibleDossiers} setDossiers={setDossiers} currentUser={user} toast={toast}/>,
+    ged:<div className="content"><GEDModule dossiers={visibleDossiers} onDossierUpdate={(id,data)=>{setDossiers(ds=>ds.map(d=>d.id===id?{...d,...(data.dp_number?{dp_number:data.dp_number}:{})}:d));}}/></div>,
+    emails:<EmailModule dossiers={visibleDossiers}/>,
     import:<Import setDossiers={setDossiers} toast={toast}/>,
     profil:<Profil currentUser={user} users={users} setUsers={setUsers} toast={toast}/>,
-    admin:<Admin users={users} toast={toast}/>,
+    admin:<Admin users={users} setUsers={setUsers} toast={toast}/>,
   };
 
   return <>
@@ -1524,7 +1579,7 @@ export default function App(){
         {/* Search — prominent at top */}
         <div className="sb-srch">
           <span className="sb-srch-ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-          <input value={globalQ} onChange={e=>setGlobalQ(e.target.value)} placeholder="Nom, CP, adresse, N° DP..."/>
+          <input value={globalQ} onChange={e=>{setGlobalQ(e.target.value);if(e.target.value&&page!=="dossiers")setPage("dossiers");}} placeholder="Nom, CP, adresse, N° DP..."/>
         </div>
         <div className="sb-nav">
           <div className="nvsec">Navigation</div>
@@ -1545,13 +1600,13 @@ export default function App(){
       <div className="main">
         <div className="topbar">
           <button className="bic" style={{display:"none"}} onClick={()=>setSbOpen(o=>!o)}><Ic n="menu" c="var(--tx2)"/></button>
-          <div className="tb-ttl">{titles[page]||"CRM"}</div>
+          {/*<div className="tb-ttl">{titles[page]||"CRM"}</div>*/}
 
-          {/* Filters — compact, left-aligned */}
-          <div className="tb-flt">
+          {/* Filters — compact, left-aligned (hidden for clients) */}
+          {!isClient&&<div className="tb-flt">
             <input className={"fsel"+(globalFilters.client_name?" on":"")}
               value={globalFilters.client_name}
-              onChange={e=>setGlobalFilters(f=>({...f,client_name:e.target.value}))}
+              onChange={e=>{setGlobalFilters(f=>({...f,client_name:e.target.value}));if(e.target.value&&page!=="dossiers")setPage("dossiers");}}
               placeholder="Client..."
               style={{width:100}}/>
             <select className={"fsel"+(globalFilters.status?" on":"")} value={globalFilters.status} onChange={e=>setFilter("status",e.target.value)}>
@@ -1569,16 +1624,19 @@ export default function App(){
             <input type="date" title="Créé depuis"
               className={"fsel"+(globalFilters.date_created?" on":"")}
               value={globalFilters.date_created}
-              onChange={e=>setGlobalFilters(f=>({...f,date_created:e.target.value}))}
+              onChange={e=>{setGlobalFilters(f=>({...f,date_created:e.target.value}));if(e.target.value&&page!=="dossiers")setPage("dossiers");}}
               style={{width:120}}/>
             <input type="date" title="Modifié depuis"
               className={"fsel"+(globalFilters.date_updated?" on":"")}
               value={globalFilters.date_updated}
-              onChange={e=>setGlobalFilters(f=>({...f,date_updated:e.target.value}))}
+              onChange={e=>{setGlobalFilters(f=>({...f,date_updated:e.target.value}));if(e.target.value&&page!=="dossiers")setPage("dossiers");}}
               style={{width:120}}/>
             {hasFilter&&<button className="btn btn-d btn-sm" onClick={()=>setGlobalFilters({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""})}><Ic n="x" s={11}/>Reset</button>}
-          </div>
+          </div>}
 
+          {!isClient&&<><input ref={topXlsRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])topImportXLS(e.target.files[0]);e.target.value="";}}/>
+          <button className="btn btn-s btn-sm tb-xls" onClick={()=>topXlsRef.current?.click()} style={{marginLeft:"auto"}}><Ic n="import" s={12} c="var(--gr)"/>Importer</button>
+          <button className="btn btn-s btn-sm tb-xls" onClick={topExportXLS}><Ic n="dl" s={12} c="var(--bl)"/>Exporter</button></>}
           <button className="dtog" onClick={toggleDark} title={dark?"Clair":"Sombre"}>{dark?"☀️":"🌙"}</button>
 
           {/* Notifications */}
