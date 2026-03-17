@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import * as pdfjsLib from "pdfjs-dist";
+import Tesseract from "tesseract.js";
 import {
   getDocuments, uploadDocuments, deleteDocument,
   updateDocument, getDocumentVersions, applyExtractedData,
@@ -29,8 +30,9 @@ export const DOC_CATEGORIES = [
 
 const catMap = Object.fromEntries(DOC_CATEGORIES.map(c => [c.key, c]));
 
-// ── PDF extraction helpers (client-side, pdfjs) ───────────────────────────────
+// ── Extraction helpers (PDF text + OCR images/scannés) ───────────────────────
 
+// Extrait le texte embarqué d'un PDF via pdfjs
 async function extractTextFromPDF(file) {
   const buf = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
@@ -51,6 +53,59 @@ async function extractTextFromPDF(file) {
   return text;
 }
 
+// OCR sur une image (File blob ou data URL) via Tesseract.js
+async function ocrFromImage(imageSource) {
+  const { data: { text } } = await Tesseract.recognize(imageSource, 'fra', {
+    logger: () => {},
+  });
+  return text || '';
+}
+
+// OCR sur un PDF scanné : rend chaque page en canvas puis OCR
+async function ocrFromScannedPDF(file, maxPages = 3) {
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+  const pages = Math.min(pdf.numPages, maxPages);
+  let fullText = '';
+
+  for (let i = 1; i <= pages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 }); // haute résolution pour meilleure OCR
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d');
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const dataUrl = canvas.toDataURL('image/png');
+    const pageText = await ocrFromImage(dataUrl);
+    fullText += pageText + '\n';
+  }
+  return fullText;
+}
+
+/**
+ * Extraction de texte universelle :
+ * - Image (JPEG, PNG, WebP) → OCR directe
+ * - PDF avec texte embarqué → pdfjs (rapide)
+ * - PDF scanné (sans texte) → render → OCR
+ */
+async function extractText(file, maxPages = 3) {
+  const isImage = file.type?.startsWith('image/');
+
+  if (isImage) {
+    return await ocrFromImage(file);
+  }
+
+  // PDF : tente d'abord l'extraction texte native
+  const pdfText = await extractTextFromPDF(file);
+  const stripped = pdfText.replace(/\s/g, '');
+  // Si le PDF contient très peu de texte (<30 car), c'est probablement un scan
+  if (stripped.length < 30) {
+    return await ocrFromScannedPDF(file, maxPages);
+  }
+  return pdfText;
+}
+
 // Détecte si un nom de fichier correspond à un récépissé de dépôt
 function isRecepisseFile(filename) {
   const n = (filename || '').toLowerCase().replace(/[_\-\s.]/g, '');
@@ -64,7 +119,7 @@ function isRecepisseFile(filename) {
 
 async function extractDPNumber(file) {
   try {
-    const text = await extractTextFromPDF(file);
+    const text = await extractText(file);
     const patterns = [
       // Format officiel DP : DP + 3+3+2+5 = 13 chiffres (ex: DP 075 111 24 00001)
       /DP[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{2})[\s\-\.\/]?(\d{5})/gi,
@@ -72,16 +127,26 @@ async function extractDPNumber(file) {
       /DP[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2,4}[\s\-]?\d{3,6}/gi,
       // DP suivi de 13 chiffres groupés
       /\bDP\s{0,3}\d[\d\s\-]{10,18}\d\b/gi,
+      // Format mixte : DP° ou N° DP avec 12 chiffres + 1 lettre (ex: 0751112L00001)
+      /(?:N°\s*)?DP[°]?\s{0,3}(\d{7}[A-Z]\d{5})/gi,
+      // Format mixte : N° DP avec 10 chiffres + 2 lettres
+      /(?:N°\s*)?DP[°]?\s{0,3}(\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?[A-Z]{2}[\s\-]?\d{2})/gi,
+      // Format générique : N° DP suivi de 10-13 caractères alphanumériques
+      /N[°o]\s*DP\s{0,3}([\dA-Z][\dA-Z\s\-]{9,17}[\dA-Z])/gi,
     ];
     for (const p of patterns) {
       const m = text.match(p);
       if (m) {
-        // Normalise : garde DP + les chiffres séparés par espaces
         const raw = m[0].trim();
+        const chars = raw.replace(/^.*?DP[°]?\s*/i, '').replace(/[\s\-\.\/]/g, '');
+        // 13 chiffres purs → format standard
         const digits = raw.replace(/[^0-9]/g, '');
-        if (digits.length >= 13) {
-          // Formate en DP XXX XXX YY ZZZZZ
+        if (digits.length >= 13 && !/[A-Z]/i.test(chars.slice(0, 13))) {
           return `DP ${digits.slice(0,3)} ${digits.slice(3,6)} ${digits.slice(6,8)} ${digits.slice(8,13)}`;
+        }
+        // Format mixte avec lettres → garder tel quel, nettoyé
+        if (chars.length >= 12) {
+          return `DP ${chars}`;
         }
         return raw.replace(/\s+/g, ' ').slice(0, 50);
       }
@@ -92,7 +157,7 @@ async function extractDPNumber(file) {
 
 async function extractKbisData(file) {
   try {
-    const raw = await extractTextFromPDF(file);
+    const raw = await extractText(file, 2);
 
     // Normalise : collapse whitespace excessif tout en gardant les sauts de ligne
     const text = raw
@@ -222,22 +287,17 @@ function ExtractionBanner({ data, onApply, onDismiss }) {
       )}
       {kbis?.company_name && (
         <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
-          <span style={{ color: '#6B6B60' }}>Dénomination sociale : </span><strong>{kbis.company_name}</strong>
-        </div>
-      )}
-      {kbis?.siret && (
-        <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
-          <span style={{ color: '#6B6B60' }}>Immatriculation au RCS : </span><strong>{kbis.siret}</strong>
+          <span style={{ color: '#6B6B60' }}>Nom entreprise : </span><strong>{kbis.company_name}</strong>
         </div>
       )}
       {kbis?.address && (
         <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
-          <span style={{ color: '#6B6B60' }}>Adresse du siège : </span><strong>{kbis.address}</strong>
+          <span style={{ color: '#6B6B60' }}>Adresse : </span><strong>{kbis.address}</strong>
         </div>
       )}
       {kbis?.representant && (
         <div style={{ fontSize: 12, color: '#1A1A16', marginBottom: 2 }}>
-          <span style={{ color: '#6B6B60' }}>Représentant légal : </span><strong>{kbis.representant}</strong>
+          <span style={{ color: '#6B6B60' }}>Représentant : </span><strong>{kbis.representant}</strong>
         </div>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
@@ -404,25 +464,31 @@ function DropZone({ dossierId, category, onUploaded, onExtracted }) {
     let extractedData = null;
 
     for (const file of files) {
-      if (file.type !== 'application/pdf') continue;
+      const isPdf = file.type === 'application/pdf';
+      const isImage = file.type?.startsWith('image/');
+      // Extraction uniquement sur PDF et images (pas sur .doc, .xls, etc.)
+      if (!isPdf && !isImage) continue;
 
       const isRD = isRecepisseFile(file.name);
 
       // Extraction DP : catégorie "dp" OU fichier récépissé (RD/rd/recepisse)
       if (catDef.extractDP || isRD) {
-        setProgress(isRD
-          ? `📄 Récépissé détecté — extraction N° DP 13 chiffres...`
-          : 'Extraction du N° DP...');
+        setProgress(isImage
+          ? `🔍 OCR en cours — extraction N° DP depuis image...`
+          : isRD
+            ? `📄 Récépissé détecté — extraction N° DP...`
+            : 'Extraction du N° DP...');
         const dp = await extractDPNumber(file);
         if (dp) {
           extractedData = { ...extractedData, dp_number: dp };
-          // Récépissé → application immédiate sans bannière de confirmation
           if (isRD) extractedData = { ...extractedData, forceApply: true };
         }
       }
 
       if (catDef.extractKbis) {
-        setProgress('Extraction des données KBIS...');
+        setProgress(isImage
+          ? '🔍 OCR en cours — extraction données KBIS depuis image...'
+          : 'Extraction des données KBIS...');
         const kbis = await extractKbisData(file);
         if (kbis && (kbis.siret || kbis.company_name)) {
           extractedData = { ...extractedData, kbis };
@@ -468,27 +534,27 @@ function DropZone({ dossierId, category, onUploaded, onExtracted }) {
         </div>
       ) : (
         <>
-          <div style={{ fontSize: 28, marginBottom: 8 }}>☁️</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--tx2)' }}>
+          <div style={{ fontSize: 24, marginBottom: 6, opacity: .7 }}>📂</div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--or)' }}>
             Glissez vos fichiers ici
           </div>
-          <div style={{ fontSize: 11, color: 'var(--tx4)', marginTop: 4 }}>
+          <div style={{ fontSize: 11, color: 'var(--tx4)', marginTop: 3 }}>
             ou cliquez pour sélectionner · PDF, images, documents · 20 MB max
           </div>
           {catDef?.extractDP && (
-            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--bl)', background: 'var(--bl-l)',
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--or)', background: 'var(--or-l)',
               padding: '4px 10px', borderRadius: 20, display: 'inline-block', fontWeight: 600 }}>
-              🔍 N° DP extrait automatiquement
+              N° DP extrait automatiquement (PDF, images, scans OCR)
             </div>
           )}
-          <div style={{ marginTop: 6, fontSize: 10, color: '#6366f1', background: '#eef2ff',
+          <div style={{ marginTop: 6, fontSize: 10, color: 'var(--or)', background: 'var(--or-l)',
             padding: '3px 9px', borderRadius: 20, display: 'inline-block', fontWeight: 600 }}>
-            📋 Fichier nommé RD / récépissé → N° DP extrait et enregistré automatiquement
+            Fichier nommé RD / récépissé → N° DP extrait automatiquement
           </div>
           {catDef?.extractKbis && (
-            <div style={{ marginTop: 8, fontSize: 11, color: '#1A4A8A', background: '#EEF3FD',
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--or)', background: 'var(--or-l)',
               padding: '4px 10px', borderRadius: 20, display: 'inline-block', fontWeight: 600 }}>
-              🔍 SIRET + données entreprise extraits automatiquement
+              Nom, adresse, représentant extraits automatiquement (PDF, images, scans OCR)
             </div>
           )}
         </>
@@ -501,44 +567,48 @@ function DropZone({ dossierId, category, onUploaded, onExtracted }) {
 
 function DocRow({ doc, onPreview, onDelete, onVersions, onRename }) {
   const cat = catMap[doc.category] || catMap.autre;
-  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-      background: 'var(--bg3)', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)',
-      marginBottom: 6, cursor: 'pointer', transition: 'all .15s', position: 'relative' }}
-      onMouseLeave={() => setMenuOpen(false)}>
-      <FileIcon mime={doc.mime_type} size={32} />
-      <div style={{ flex: 1, minWidth: 0 }} onClick={() => onPreview(doc)}>
-        <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px',
+      background: 'var(--bg2)', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)',
+      marginBottom: 6, transition: 'all .15s' }}>
+      <div style={{ width: 36, height: 36, borderRadius: 8, background: cat.bg, display: 'flex',
+        alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>
+        {cat.icon}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onPreview(doc)}>
+        <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--tx)' }}>
           {doc.original_name || doc.name}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3 }}>
-          <span style={{ fontSize: 10, fontWeight: 700, color: cat.color, background: cat.bg,
-            padding: '1px 7px', borderRadius: 10 }}>{cat.icon} {cat.label}</span>
-          <span style={{ fontSize: 11, color: 'var(--tx4)' }}>{doc.size_human}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--or)', background: 'var(--or-l)',
+            padding: '1px 7px', borderRadius: 6 }}>{cat.label}</span>
+          <span style={{ fontSize: 10, color: 'var(--tx4)' }}>{doc.size_human}</span>
+          <span style={{ fontSize: 10, color: 'var(--tx4)' }}>
+            {new Date(doc.created).toLocaleDateString('fr-FR')}
+          </span>
           {doc.version > 1 && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#7c3aed', background: '#f5f3ff',
-              padding: '1px 7px', borderRadius: 10, cursor: 'pointer' }}
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--or)', background: 'var(--or-l)',
+              padding: '1px 6px', borderRadius: 6, cursor: 'pointer' }}
               onClick={e => { e.stopPropagation(); onVersions(doc); }}>
               v{doc.version}
             </span>
           )}
-          <span style={{ fontSize: 11, color: 'var(--tx4)' }}>
-            {new Date(doc.created).toLocaleDateString('fr-FR')}
-          </span>
           {doc.uploaded_by && (
-            <span style={{ fontSize: 11, color: 'var(--tx4)' }}>· {doc.uploaded_by}</span>
+            <span style={{ fontSize: 10, color: 'var(--tx4)' }}>{doc.uploaded_by}</span>
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 5 }}>
-        <button className="bic btn-sm" title="Aperçu" onClick={() => onPreview(doc)}>👁</button>
+      <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+        <button className="bic" title="Aperçu" onClick={() => onPreview(doc)}
+          style={{ width: 28, height: 28, fontSize: 12 }}>👁</button>
         <a href={`${API_BASE}${doc.url}`} download={doc.original_name || doc.name}
-          className="bic" title="Télécharger" onClick={e => e.stopPropagation()}>⬇</a>
-        <button className="bic btn-sm" title="Versions" onClick={() => onVersions(doc)}>🕐</button>
-        <button className="bic btn-sm" title="Supprimer"
-          style={{ color: 'var(--re)' }} onClick={() => onDelete(doc)}>🗑</button>
+          className="bic" title="Télécharger" onClick={e => e.stopPropagation()}
+          style={{ width: 28, height: 28, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⬇</a>
+        <button className="bic" title="Versions" onClick={() => onVersions(doc)}
+          style={{ width: 28, height: 28, fontSize: 12 }}>🕐</button>
+        <button className="bic" title="Supprimer" onClick={() => onDelete(doc)}
+          style={{ width: 28, height: 28, fontSize: 12, color: 'var(--re)' }}>🗑</button>
       </div>
     </div>
   );
@@ -683,20 +753,21 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
       )}
 
       {/* Category filter pills */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
         <button className={`btn btn-sm ${category === 'all' ? 'btn-p' : 'btn-s'}`}
-          onClick={() => setCategory('all')}>
+          onClick={() => setCategory('all')} style={{ fontSize: 11 }}>
           Tous {documents.length > 0 && `(${documents.length})`}
         </button>
         {DOC_CATEGORIES.map(c => {
           const cnt = (grouped[c.key] || []).length;
           if (!isEmbedded && cnt === 0) return null;
+          const active = category === c.key;
           return (
             <button key={c.key}
-              className={`btn btn-sm ${category === c.key ? 'btn-p' : 'btn-s'}`}
+              className={`btn btn-sm ${active ? 'btn-p' : 'btn-s'}`}
               onClick={() => setCategory(c.key)}
-              style={category === c.key ? {} : { borderColor: c.color + '60', color: c.color }}>
-              {c.icon} {c.label} {cnt > 0 && `(${cnt})`}
+              style={{ fontSize: 11, ...(active ? {} : {}) }}>
+              {c.icon} {c.label} {cnt > 0 && <span style={{ fontSize: 10, fontWeight: 700, opacity: .7 }}>({cnt})</span>}
             </button>
           );
         })}
@@ -725,18 +796,18 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
           )}
           {/* In standalone mode with "all" selected, show a general drop zone */}
           {category === 'all' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 6, marginBottom: 14 }}>
               {DOC_CATEGORIES.slice(0, 6).map(c => (
                 <button key={c.key}
                   className="btn btn-s"
-                  style={{ flexDirection: 'column', gap: 4, padding: '10px', height: 'auto',
-                    borderColor: c.color + '50', justifyContent: 'center' }}
+                  style={{ flexDirection: 'column', gap: 3, padding: '10px 8px', height: 'auto',
+                    justifyContent: 'center', border: '1.5px solid var(--bd)' }}
                   onClick={() => setCategory(c.key)}>
-                  <span style={{ fontSize: 20 }}>{c.icon}</span>
-                  <span style={{ fontSize: 11 }}>Ajouter {c.label}</span>
+                  <span style={{ fontSize: 18 }}>{c.icon}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600 }}>Ajouter {c.label}</span>
                   {(c.extractDP || c.extractKbis) && (
-                    <span style={{ fontSize: 9, color: '#1A4A8A', background: '#EEF3FD',
-                      padding: '1px 5px', borderRadius: 8 }}>🔍 Auto</span>
+                    <span style={{ fontSize: 9, color: 'var(--or)', background: 'var(--or-l)',
+                      padding: '1px 5px', borderRadius: 6, fontWeight: 600 }}>Auto</span>
                   )}
                 </button>
               ))}
@@ -769,12 +840,13 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
           const docs = grouped[c.key] || [];
           if (docs.length === 0) return null;
           return (
-            <div key={c.key} style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--tx3)', textTransform: 'uppercase',
-                letterSpacing: '.1em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>{c.icon}</span> {c.label}
-                <span style={{ background: 'var(--bg3)', border: '1px solid var(--bd)',
-                  borderRadius: 20, padding: '1px 8px', fontSize: 10 }}>{docs.length}</span>
+            <div key={c.key} style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--tx2)', textTransform: 'uppercase',
+                letterSpacing: '.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6,
+                padding: '6px 10px', background: 'var(--bg3)', borderRadius: 'var(--r)', border: '1.5px solid var(--bd)' }}>
+                <span style={{ fontSize: 14 }}>{c.icon}</span> {c.label}
+                <span style={{ background: 'var(--or-l)', color: 'var(--or)',
+                  borderRadius: 20, padding: '1px 8px', fontSize: 10, fontWeight: 700 }}>{docs.length}</span>
               </div>
               {docs.map(doc => (
                 <DocRow key={doc.id} doc={doc}
@@ -799,14 +871,14 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
 
       {/* Stats bar */}
       {stats.length > 0 && (
-        <div style={{ marginTop: 20, padding: '12px 16px', background: 'var(--bg3)',
-          border: '1.5px solid var(--bd)', borderRadius: 10, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, color: 'var(--tx3)', fontWeight: 700 }}>
+        <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--bg3)',
+          border: '1.5px solid var(--bd)', borderRadius: 'var(--r)', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 11, color: 'var(--or)', fontWeight: 700 }}>
             {documents.length} document{documents.length > 1 ? 's' : ''}
           </span>
           {stats.map(s => (
-            <span key={s.key} style={{ fontSize: 11, color: s.color }}>
-              {s.icon} {s.label}: {s.count}
+            <span key={s.key} style={{ fontSize: 10, color: 'var(--tx3)', display: 'flex', alignItems: 'center', gap: 3 }}>
+              {s.icon} {s.label}: <strong style={{ color: 'var(--tx2)' }}>{s.count}</strong>
             </span>
           ))}
         </div>

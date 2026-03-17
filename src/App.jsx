@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import * as pdfjsLib from "pdfjs-dist";
+import Tesseract from "tesseract.js";
 import EmailModule from "./EmailModule.jsx";
 import GEDModule, { DOC_CATEGORIES } from "./GEDModule.jsx";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -47,53 +48,99 @@ const INIT_CLIENTS_ORG = [
   {id:2,name:"Globe Energy",address:"5 bd Haussmann, 75008 Paris",siret:"987 654 321 00034",representant:"Pierre Martin",email:"contact@globeenergy.fr"},
 ];
 
-function genId(){const n=new Date();const p=x=>String(x).padStart(2,"0");return p(n.getDate())+"/"+p(n.getMonth()+1)+"/"+n.getFullYear()+"/"+p(n.getHours())+p(n.getMinutes());}
+function genId(){const n=new Date();const p=x=>String(x).padStart(2,"0");return p(n.getDate())+"/"+p(n.getMonth()+1)+"/"+n.getFullYear();}
+// Génère l'ID du dossier : N° DP si disponible, sinon fallback date
+function dossierId(dp,fallback){return dp?dp.replace(/\s+/g," ").trim():fallback;}
 
+function fmtDate(d){
+  if(!d)return "";
+  const dt=new Date(d);
+  const p=x=>String(x).padStart(2,"0");
+  return p(dt.getDate())+"/"+p(dt.getMonth()+1)+"/"+dt.getFullYear();
+}
 function timeAgo(d){
   if(!d)return "";
   const diff=Date.now()-new Date(d).getTime();
   const m=Math.floor(diff/60000),h=Math.floor(m/60),day=Math.floor(h/24),mo=Math.floor(day/30);
-  if(mo>0)return mo+"mois";if(day>0)return day+"j";if(h>0)return h+"h";if(m>0)return m+"min";return "maintenant";
+  if(mo>0)return mo+" mois";if(day>0)return day+"j";if(h>0)return h+"h";if(m>0)return m+"min";return "maintenant";
 }
 
 const MOCK = [
-  {id:"15/11/2024/0900",client:"Martin Dupont",client_org:"Photo Ecologie",email:"martin@example.com",phone:"06 12 34 56 78",address:"12 rue des Lilas, 75011 Paris",postal_code:"75011",dp_number:"DP 075 111 24 00001",parcelle:"AB 0012",
+  {id:"15/11/2024",client:"Martin Dupont",client_org:"Photo Ecologie",email:"martin@example.com",phone:"06 12 34 56 78",address:"12 rue des Lilas, 75011 Paris",postal_code:"75011",dp_number:"DP 075 111 24 00001",parcelle:"AB 0012",
    works:[{type:"PAC",formalites:["Raccordement"],kwc:""},{type:"ITE",formalites:["Consuel"],kwc:""}],
    status:"en_cours",assignee:"Sarah",created:"2024-11-15",updated:"2025-03-10",paid:false,amount:1200,installed:false,
    docs:[{name:"Devis_Martin.pdf",size:"245 KB",date:"2024-11-15",url:null}],
    comments:[{author:"Sarah",date:"2024-11-20",text:"Dossier en attente de validation EDF.",from_client:false}],
    avancement:{dp_checked:true,dp_envoi:"2024-11-16",dp_note:"",racc_checked:false,racc_date:"",racc_status:"",racc_note:"",cons_checked:false,cons_date:"",cons_note:"",tva_checked:false,tva_date:"",tva_note:""}},
-  {id:"08/10/2024/1400",client:"Emilie Rousseau",client_org:"Globe Energy",email:"emilie@example.com",phone:"06 98 76 54 32",address:"5 avenue Victor Hugo, 69001 Lyon",postal_code:"69001",dp_number:"DP 069 011 24 00042",parcelle:"",
+  {id:"08/10/2024",client:"Emilie Rousseau",client_org:"Globe Energy",email:"emilie@example.com",phone:"06 98 76 54 32",address:"5 avenue Victor Hugo, 69001 Lyon",postal_code:"69001",dp_number:"DP 069 011 24 00042",parcelle:"",
    works:[{type:"Panneaux Solaires",formalites:["Recuperation de TVA"],kwc:"6 kwc"}],
    status:"valide",assignee:"Nada",created:"2024-10-08",updated:"2025-02-28",paid:true,amount:800,installed:true,
    docs:[{name:"Facture_Panneaux.pdf",size:"180 KB",date:"2024-10-10",url:null}],
    comments:[{author:"Nada",date:"2024-11-30",text:"Dossier valide, TVA recuperee.",from_client:false}],
    avancement:{dp_checked:true,dp_envoi:"2024-10-15",dp_note:"Envoye par AR",racc_checked:true,racc_date:"2024-11-01",racc_status:"Complet",racc_note:"RAS",cons_checked:true,cons_date:"2024-11-20",cons_note:"",tva_checked:true,tva_date:"2024-11-30",tva_note:""}},
-  {id:"05/12/2024/1030",client:"Jean-Pierre Moreau",client_org:"Globe Energy",email:"jp@example.com",phone:"07 11 22 33 44",address:"28 chemin du Moulin, 13300 Salon-de-Provence",postal_code:"13300",dp_number:"DP 013 055 24 00078",parcelle:"CD 0034",
+  {id:"05/12/2024",client:"Jean-Pierre Moreau",client_org:"Globe Energy",email:"jp@example.com",phone:"07 11 22 33 44",address:"28 chemin du Moulin, 13300 Salon-de-Provence",postal_code:"13300",dp_number:"DP 013 055 24 00078",parcelle:"CD 0034",
    works:[{type:"Menuiseries Exterieures",formalites:["Demande Prealable"],kwc:""}],
    status:"nouveau",assignee:"Jimmy",created:"2024-12-05",updated:"2025-03-09",paid:false,amount:2500,installed:false,
    docs:[],comments:[],
    avancement:{dp_checked:false,dp_envoi:"",dp_note:"",racc_checked:false,racc_date:"",racc_status:"",racc_note:"",cons_checked:false,cons_date:"",cons_note:"",tva_checked:false,tva_date:"",tva_note:""}},
 ];
 
-// PDF extraction
+// ── Extraction texte universelle (PDF natif + OCR images/scans) ──
+async function ocrImage(src){
+  const{data:{text}}=await Tesseract.recognize(src,"fra",{logger:()=>{}});
+  return text||"";
+}
+async function pdfToText(file,maxPages=5){
+  const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
+  let txt="";
+  for(let i=1;i<=Math.min(pdf.numPages,maxPages);i++){const pg=await pdf.getPage(i);const ct=await pg.getTextContent();let prev=null;ct.items.forEach(it=>{if(prev&&it.transform&&prev.transform){if(Math.abs(it.transform[4]-(prev.transform[4]+(prev.width||0)))>3)txt+=" ";}txt+=it.str;prev=it;});txt+="\n";}
+  return txt;
+}
+async function ocrScannedPdf(file,maxPages=3){
+  const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
+  let txt="";
+  for(let i=1;i<=Math.min(pdf.numPages,maxPages);i++){
+    const pg=await pdf.getPage(i);const vp=pg.getViewport({scale:2.0});
+    const c=document.createElement("canvas");c.width=vp.width;c.height=vp.height;
+    await pg.render({canvasContext:c.getContext("2d"),viewport:vp}).promise;
+    txt+=await ocrImage(c.toDataURL("image/png"))+"\n";
+  }
+  return txt;
+}
+async function extractTextUniversal(file,maxPages=3){
+  if(file.type?.startsWith("image/"))return await ocrImage(file);
+  const txt=await pdfToText(file,maxPages);
+  if(txt.replace(/\s/g,"").length<30)return await ocrScannedPdf(file,maxPages);
+  return txt;
+}
+
+// DP extraction (PDF + images + scans)
 async function extractDP(file){
   try{
-    const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
-    let txt="";
-    for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const ct=await pg.getTextContent();let prev=null;ct.items.forEach(it=>{if(prev&&it.transform&&prev.transform){if(Math.abs(it.transform[4]-(prev.transform[4]+(prev.width||0)))>3)txt+=" ";}txt+=it.str;prev=it;});txt+="\n";}
-    const pats=[/DP[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2,4}[\s\-]?\d{3,6}/gi,/\bDP\s{0,3}\d[\d\s]{6,25}/gi];
-    for(const p of pats){const m=txt.match(p);if(m)return m[0].trim().replace(/\s+/g," ").slice(0,50);}
+    const txt=await extractTextUniversal(file);
+    const pats=[
+      /DP[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{2})[\s\-\.\/]?(\d{5})/gi,
+      /DP[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2,4}[\s\-]?\d{3,6}/gi,
+      /\bDP\s{0,3}\d[\d\s\-]{10,18}\d\b/gi,
+      /(?:N°\s*)?DP[°]?\s{0,3}(\d{7}[A-Z]\d{5})/gi,
+      /(?:N°\s*)?DP[°]?\s{0,3}(\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?[A-Z]{2}[\s\-]?\d{2})/gi,
+      /N[°o]\s*DP\s{0,3}([\dA-Z][\dA-Z\s\-]{9,17}[\dA-Z])/gi,
+    ];
+    for(const p of pats){const m=txt.match(p);if(m){
+      const raw=m[0].trim();const digits=raw.replace(/[^0-9]/g,"");
+      if(digits.length>=13&&!/[A-Z]/i.test(raw.replace(/^.*?DP[°]?\s*/i,"").replace(/[\s\-\.\/]/g,"").slice(0,13)))
+        return`DP ${digits.slice(0,3)} ${digits.slice(3,6)} ${digits.slice(6,8)} ${digits.slice(8,13)}`;
+      return raw.replace(/\s+/g," ").slice(0,50);
+    }}
     return null;
   }catch{return null;}
 }
+
+// KBIS extraction (PDF + images + scans)
 async function extractKbis(file){
   try{
-    const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise;
-    let raw="";
-    for(let i=1;i<=Math.min(pdf.numPages,2);i++){const pg=await pdf.getPage(i);const ct=await pg.getTextContent();let prev=null;ct.items.forEach(it=>{if(prev&&it.transform&&prev.transform){if(Math.abs(it.transform[4]-(prev.transform[4]+(prev.width||0)))>3)raw+=" ";}raw+=it.str;prev=it;});raw+="\n";}
+    const raw=await extractTextUniversal(file,2);
     const text=raw.split("\n").map(l=>l.replace(/\s{2,}/g," ").trim()).join("\n");
-    // Helper : valeur après un libellé
     function after(lbl){
       const m1=text.match(new RegExp(lbl+"[\\s:–-]*([^\\n]{2,100})","i"));
       if(m1){const v=m1[1].trim().replace(/^[:–\-\s]+/,"");if(v.length>1)return v;}
@@ -101,19 +148,40 @@ async function extractKbis(file){
       if(m2)return m2[1].trim().replace(/^[:–\-\s]+/,"");
       return null;
     }
-    // Dénomination sociale
     const company_name=after("D[eé]nomination\\s+sociale")||after("D[eé]nomination")||after("Raison\\s+sociale")||null;
-    // SIRET / SIREN
     let siret=null;
     const rcsBlock=text.match(/Immatriculation\s+au\s+RCS[^\n]{0,80}\n?([^\n]{0,80})/i);
     if(rcsBlock){const numM=(rcsBlock[0]+(rcsBlock[1]||"")).match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}(?:[\s.]?\d{5})?)\b/);if(numM){const d=numM[1].replace(/[\s.]/g,"");if(d.length===14)siret=d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4");else if(d.length===9)siret=d.replace(/(\d{3})(\d{3})(\d{3})/,"$1 $2 $3");}}
     if(!siret){const fb=text.match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s.]?\d{5})\b/);if(fb){const d=fb[1].replace(/[\s.]/g,"");siret=d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4");}}
-    // Adresse
     const address=after("Adresse\\s+du\\s+si[èe]ge\\s+social")||after("Adresse\\s+du\\s+si[èe]ge")||after("Si[èe]ge\\s+social")||null;
-    // Représentant
     const representant=after("Repr[eé]sentant(?:s)?\\s+l[eé]gaux?")||after("G[eé]rant")||after("Pr[eé]sident")||after("Directeur\\s+g[eé]n[eé]ral")||null;
     const clean=v=>v?v.replace(/\.{2,}/g,"").replace(/^\W+/,"").trim():null;
     return {siret:clean(siret),company_name:clean(company_name),address:clean(address),representant:clean(representant)};
+  }catch{return null;}
+}
+
+async function extractClientData(file){
+  try{
+    const raw=await extractTextUniversal(file,2);
+    const text=raw.split("\n").map(l=>l.replace(/\s{2,}/g," ").trim()).filter(Boolean).join("\n");
+    let nom="",prenom="",email="",phone="",address="",organisme="";
+    // Email
+    const em=text.match(/[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/);
+    if(em)email=em[0];
+    // Phone (French)
+    const ph=text.match(/(?:(?:\+33|0033)\s*[1-9]|0[1-9])[\s.\-]?\d{2}[\s.\-]?\d{2}[\s.\-]?\d{2}[\s.\-]?\d{2}/);
+    if(ph)phone=ph[0].trim();
+    // Nom / Prénom via M. / Mme patterns
+    const np=text.match(/\b(?:M\.|Mr\.?|Mme\.?|Madame|Monsieur)\s+([A-ZÀ-Ü][a-zà-ÿ\-]+)\s+([A-ZÀ-Ü][A-ZÀ-Üa-zà-ÿ\-]+)/);
+    if(np){prenom=np[1];nom=np[2];}
+    else{const np2=text.match(/(?:Nom|Client|Bénéficiaire|Titulaire)\s*[:]\s*([A-ZÀ-Ü][a-zà-ÿ\-]+)\s+([A-ZÀ-Ü][A-ZÀ-Üa-zà-ÿ\-]+)/i);if(np2){prenom=np2[1];nom=np2[2];}}
+    // Address
+    const ad=text.match(/\d{1,4}[\s,]+(?:rue|avenue|boulevard|chemin|impasse|allée|place|route|cours|passage|voie)\s+[^\n]{3,60}(?:[\s,]+\d{5}[\s,]+[A-ZÀ-Ü][a-zà-ÿ\-]+(?:[\s\-]+[A-ZÀ-Ü]?[a-zà-ÿ\-]+)*)?/i);
+    if(ad)address=ad[0].trim();
+    // Organisme / Société
+    const org=text.match(/(?:Soci[eé]t[eé]|Entreprise|Organisme|Raison\s+sociale|SAS|SARL|EURL|SCI)\s*[:.]?\s*([^\n]{2,60})/i);
+    if(org)organisme=org[1].trim().replace(/^[:–\-\s]+/,"");
+    return {nom,prenom,email,phone,address,organisme};
   }catch{return null;}
 }
 
@@ -327,7 +395,7 @@ function Login({onLogin,users}){
 // ── AVANCEMENT COMPONENT ──
 function Avancement({d,save,toast}){
   const av=d.avancement||{};
-  const upd=(k,v)=>save({avancement:{...av,[k]:v}});
+  const upd=(k,v)=>{const patch={avancement:{...av,[k]:v}};if(k==="dp_envoi")patch.date_envoi_dp=v;save(patch);};
   const steps=[
     {key:"dp",label:"Demande Prealable",sentKey:"dp_envoi",noteKey:"dp_note",color:"#6366f1"},
     {key:"racc",label:"Raccordement",sentKey:"racc_date",noteKey:"racc_note",color:"#E8501A"},
@@ -485,44 +553,44 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
     :blank;
   const [f,setF]=useState(initForm);
   const [sc,setSc]=useState(false);const [dpR,setDpR]=useState(null);
-  const [kbSc,setKbSc]=useState(false);const [kbR,setKbR]=useState(null);
+  const [cdSc,setCdSc]=useState(false);const [cdR,setCdR]=useState(null);
   const [iCmt,setICmt]=useState("");const [newOrg,setNewOrg]=useState("");const [showOrg,setShowOrg]=useState(false);
-  const pRef=useRef();const kbRef=useRef();
+  const pRef=useRef();const cdRef=useRef();
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const setW=(i,k,v)=>{const w=[...f.works];w[i]={...w[i],[k]:v};set("works",w);};
   const togFmt=(i,fm)=>{const w=[...f.works];const cur=w[i].formalites||[];w[i]={...w[i],formalites:cur.includes(fm)?cur.filter(x=>x!==fm):[...cur,fm]};set("works",w);};
   const needKwc=t=>["Panneaux Solaires","Systeme Solaire Combine"].includes(t);
-  const scanPdf=async(file)=>{setSc(true);setDpR(null);const dp=await extractDP(file);setSc(false);if(dp){setDpR(dp);set("dp_number",dp);}else setDpR("none");};
-  const scanKbis=async(file)=>{
-    if(!file.type.includes("pdf"))return setKbR({error:"Seuls les PDF sont acceptés"});
-    setKbSc(true);setKbR(null);
-    const res=await extractKbis(file);
-    setKbSc(false);
-    if(res&&(res.siret||res.company_name)){
-      setKbR(res);
-      if(res.company_name)set("company_name",res.company_name);
-      if(res.siret)set("siret",res.siret);
-      if(res.address)set("kbis_address",res.address);
-      if(res.representant)set("representant",res.representant);
-      // Pré-remplir aussi client_org si vide
-      if(res.company_name&&!f.client_org)set("client_org",res.company_name);
-      // Pré-remplir adresse si vide
-      if(res.address&&!f.address)set("address",res.address);
-    }else{setKbR({error:"Aucune donnée KBIS trouvée dans ce PDF"});}
+  const scanPdf=async(file)=>{setSc(file.type?.startsWith("image/")?"ocr":true);setDpR(null);const dp=await extractDP(file);setSc(false);if(dp){setDpR(dp);set("dp_number",dp);}else setDpR("none");};
+  const scanClientDoc=async(file)=>{
+    const isPdf=file.type?.includes("pdf");const isImg=file.type?.startsWith("image/");
+    if(!isPdf&&!isImg)return setCdR({error:"Formats acceptés : PDF, JPG, PNG"});
+    setCdSc(isImg?"ocr":true);setCdR(null);
+    const res=await extractClientData(file);
+    setCdSc(false);
+    if(res&&(res.nom||res.prenom||res.email||res.phone||res.address||res.organisme)){
+      setCdR(res);
+      if(res.nom)set("client_nom",res.nom);
+      if(res.prenom)set("client_prenom",res.prenom);
+      if(res.email)set("email",res.email);
+      if(res.phone)set("phone",res.phone);
+      if(res.address)set("address",res.address);
+      if(res.organisme&&!f.client_org)set("client_org",res.organisme);
+    }else{setCdR({error:"Aucune donnée client trouvée dans ce document"});}
   };
   const save=()=>{
     const fullName=`${f.client_prenom||""} ${f.client_nom||""}`.trim()||f.client||"";
     if(!fullName)return;
     const now=new Date().toISOString().split("T")[0];
-    const id=initial?.id||genId();
+    const fallback=initial?.id||genId();
+    const id=dossierId(f.dp_number,fallback);
     const cmts=[...(f.comments||[])];
     if(iCmt.trim())cmts.push({author:currentUser.name,date:now,text:iCmt,from_client:false});
-    onSave({...f,client:fullName,id,created:initial?.created||now,updated:now,comments:cmts});
+    onSave({...f,client:fullName,id,_oldId:initial?.id||fallback,created:initial?.created||now,updated:now,comments:cmts});
   };
   return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="modal">
       <div className="mhdr">
-        <div><h2 style={{fontSize:16,fontWeight:800}}>{initial?"Modifier":"Nouveau dossier"}</h2>{initial&&<div style={{fontSize:10,color:"var(--or)",marginTop:2,fontFamily:"var(--fm)"}}>{initial.id}</div>}</div>
+        <div><h2 style={{fontSize:16,fontWeight:800}}>{initial?"Modifier":"Nouveau dossier"}</h2>{initial&&<div style={{fontSize:10,color:"var(--or)",marginTop:2}}>{initial.id}</div>}</div>
         <button className="bic" onClick={onClose}><Ic n="x"/></button>
       </div>
       <div className="mbdy">
@@ -540,71 +608,45 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
             </div>
             {/* Scanner DP */}
             <div className="fg" style={{marginBottom:16}}>
-              <label className="lbl">N° DP — Scanner PDF</label>
+              <label className="lbl">N° DP — Scanner document (PDF, JPG, PNG)</label>
               <div style={{display:"flex",gap:7}}>
                 <input value={f.dp_number} onChange={e=>set("dp_number",e.target.value)} placeholder="DP 075 111 24 00001" style={{flex:1}}/>
                 <button className="btn btn-s btn-sm" onClick={()=>pRef.current&&pRef.current.click()}><Ic n="scan" s={12}/>Scanner</button>
               </div>
-              <input ref={pRef} type="file" accept=".pdf,application/pdf" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])scanPdf(e.target.files[0]);e.target.value="";}}/>
-              {sc&&<div style={{display:"flex",gap:6,fontSize:12,color:"var(--tx3)",padding:"4px 0"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>Lecture PDF...</div>}
-              {dpR&&dpR!=="none"&&<div style={{background:"var(--gr-l)",border:"1px solid #a7f3d0",borderRadius:"var(--r)",padding:"8px 12px",display:"flex",gap:8,marginTop:5}}><Ic n="check" s={13} c="var(--gr)"/><div><div style={{fontSize:10,fontWeight:700,color:"var(--gr)"}}>N° DP detecte</div><div style={{fontSize:12,fontFamily:"var(--fm)"}}>{dpR}</div></div></div>}
+              <input ref={pRef} type="file" accept=".pdf,application/pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])scanPdf(e.target.files[0]);e.target.value="";}}/>
+              {sc&&<div style={{display:"flex",gap:6,fontSize:12,color:"var(--tx3)",padding:"4px 0"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>{sc==="ocr"?"OCR en cours sur image...":"Lecture document..."}</div>}
+              {dpR&&dpR!=="none"&&<div style={{background:"var(--gr-l)",border:"1px solid #a7f3d0",borderRadius:"var(--r)",padding:"8px 12px",display:"flex",gap:8,marginTop:5}}><Ic n="check" s={13} c="var(--gr)"/><div><div style={{fontSize:10,fontWeight:700,color:"var(--gr)"}}>N° DP detecte</div><div style={{fontSize:12}}>{dpR}</div></div></div>}
               {dpR==="none"&&<div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:"var(--r)",padding:"7px 10px",fontSize:11,color:"#b45309",marginTop:5}}>Aucun N° DP trouve. Saisir manuellement.</div>}
             </div>
-            {/* Envoi DP + Email mairie → relances automatiques */}
-            <div style={{background:"#eef2ff",border:"1.5px solid #c7d2fe",borderRadius:"var(--rl)",padding:14,marginBottom:16}}>
-              <div style={{fontSize:11,fontWeight:800,color:"#6366f1",marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>⏰ Relances automatiques</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                <div className="fg">
-                  <label className="lbl">Date d'envoi du dossier DP
-                    <span style={{marginLeft:6,fontSize:10,color:"#6366f1",fontWeight:600,background:"#e0e7ff",padding:"1px 6px",borderRadius:8}}>J+6 récépissé</span>
-                  </label>
-                  <input type="date" value={f.date_envoi_dp||""} onChange={e=>set("date_envoi_dp",e.target.value)}/>
-                  {f.date_envoi_dp&&(()=>{
-                    const sent=new Date(f.date_envoi_dp);
-                    const j6=new Date(sent);j6.setDate(j6.getDate()+6);
-                    const j30=new Date(sent);j30.setDate(j30.getDate()+30);
-                    return <div style={{fontSize:10,color:"#4f46e5",marginTop:4}}>
-                      📧 Relance récépissé : <strong>{j6.toLocaleDateString("fr-FR")}</strong><br/>
-                      📧 Relance accord DP : <strong>{j30.toLocaleDateString("fr-FR")}</strong>
-                    </div>;
-                  })()}
-                </div>
-                <div className="fg">
-                  <label className="lbl">Email de la mairie
-                    <span style={{marginLeft:6,fontSize:10,color:"#6366f1",fontWeight:600,background:"#e0e7ff",padding:"1px 6px",borderRadius:8}}>J+30 accord</span>
-                  </label>
-                  <input type="email" value={f.mairie_email||""} onChange={e=>set("mairie_email",e.target.value)} placeholder="urbanisme@mairie-xxx.fr"/>
-                  <div style={{fontSize:10,color:"#6B6B60",marginTop:3}}>Relances envoyées automatiquement à cette adresse</div>
-                </div>
-              </div>
-            </div>
-            {/* KBIS Scanner */}
-            <div style={{background:"#EEF3FD",border:"1.5px solid #b3c7ed",borderRadius:"var(--rl)",padding:14,marginBottom:16}}>
-              <div style={{fontSize:11,fontWeight:800,color:"#1A4A8A",marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>🏢 Extraction KBIS — Pré-remplissage automatique</div>
+            {/* Extraction données client */}
+            <div style={{background:"var(--or-l)",border:"1.5px solid rgba(232,80,26,.25)",borderRadius:"var(--rl)",padding:14,marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:800,color:"var(--or)",marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>Extraction données client — Pré-remplissage automatique</div>
               <div
-                onDrop={e=>{e.preventDefault();if(e.dataTransfer.files?.[0])scanKbis(e.dataTransfer.files[0]);}}
+                onDrop={e=>{e.preventDefault();if(e.dataTransfer.files?.[0])scanClientDoc(e.dataTransfer.files[0]);}}
                 onDragOver={e=>e.preventDefault()}
-                onClick={()=>!kbSc&&kbRef.current?.click()}
-                style={{border:"2px dashed #93a7d1",borderRadius:"var(--r)",padding:"18px 12px",textAlign:"center",cursor:kbSc?"not-allowed":"pointer",background:kbSc?"#f8fafc":"#fff",transition:"all .15s"}}
+                onClick={()=>!cdSc&&cdRef.current?.click()}
+                style={{border:"2px dashed rgba(232,80,26,.3)",borderRadius:"var(--r)",padding:"18px 12px",textAlign:"center",cursor:cdSc?"not-allowed":"pointer",background:cdSc?"#fef6f2":"#fff",transition:"all .15s"}}
               >
-                <input ref={kbRef} type="file" accept=".pdf,application/pdf" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])scanKbis(e.target.files[0]);e.target.value="";}}/>
-                {kbSc?<div style={{display:"flex",gap:6,justifyContent:"center",fontSize:12,color:"var(--tx3)"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>Analyse du KBIS en cours...</div>
-                :<div><div style={{fontSize:13,fontWeight:600,color:"#1A4A8A"}}>Glisser un PDF KBIS ici</div><div style={{fontSize:11,color:"#6B6B60",marginTop:3}}>ou cliquer pour selectionner — SIRET, entreprise, adresse et representant extraits automatiquement</div></div>}
+                <input ref={cdRef} type="file" accept=".pdf,application/pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])scanClientDoc(e.target.files[0]);e.target.value="";}}/>
+                {cdSc?<div style={{display:"flex",gap:6,justifyContent:"center",fontSize:12,color:"var(--tx3)"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>{cdSc==="ocr"?"OCR en cours sur image...":"Analyse du document..."}</div>
+                :<div><div style={{fontSize:13,fontWeight:600,color:"var(--or)"}}>Glisser un document ici (PDF, JPG, PNG)</div><div style={{fontSize:11,color:"#6B6B60",marginTop:3}}>Nom, prénom, organisme, adresse, téléphone et email extraits automatiquement</div></div>}
               </div>
-              {kbR&&!kbR.error&&<div style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:"var(--r)",padding:"10px 12px",marginTop:8}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:4}}>Donnees KBIS extraites avec succes</div>
-                {kbR.company_name&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Entreprise : </span><strong>{kbR.company_name}</strong></div>}
-                {kbR.siret&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>SIRET : </span><strong style={{fontFamily:"var(--fm)"}}>{kbR.siret}</strong></div>}
-                {kbR.address&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Adresse : </span><strong>{kbR.address}</strong></div>}
-                {kbR.representant&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Representant : </span><strong>{kbR.representant}</strong></div>}
+              {cdR&&!cdR.error&&<div style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:"var(--r)",padding:"10px 12px",marginTop:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:4}}>Données client extraites avec succès</div>
+                {cdR.nom&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Nom : </span><strong>{cdR.nom}</strong></div>}
+                {cdR.prenom&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Prénom : </span><strong>{cdR.prenom}</strong></div>}
+                {cdR.organisme&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Organisme : </span><strong>{cdR.organisme}</strong></div>}
+                {cdR.address&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Adresse : </span><strong>{cdR.address}</strong></div>}
+                {cdR.phone&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Téléphone : </span><strong>{cdR.phone}</strong></div>}
+                {cdR.email&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Email : </span><strong>{cdR.email}</strong></div>}
               </div>}
-              {kbR?.error&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"var(--r)",padding:"7px 10px",fontSize:11,color:"#b91c1c",marginTop:8}}>{kbR.error}</div>}
+              {cdR?.error&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"var(--r)",padding:"7px 10px",fontSize:11,color:"#b91c1c",marginTop:8}}>{cdR.error}</div>}
             </div>
             {/* Client info */}
             <div className="sec" style={{marginBottom:12}}>Informations client</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-              <div className="fg"><label className="lbl">Prénom *</label><input value={f.client_prenom||""} onChange={e=>set("client_prenom",e.target.value)} placeholder="Prénom"/></div>
               <div className="fg"><label className="lbl">Nom *</label><input value={f.client_nom||""} onChange={e=>set("client_nom",e.target.value)} placeholder="Nom de famille"/></div>
+              <div className="fg"><label className="lbl">Prénom *</label><input value={f.client_prenom||""} onChange={e=>set("client_prenom",e.target.value)} placeholder="Prénom"/></div>
               <div className="fg">
                 <label className="lbl">Organisme</label>
                 <div style={{display:"flex",gap:5}}>
@@ -613,13 +655,9 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
                 </div>
                 {showOrg&&<div style={{display:"flex",gap:5,marginTop:5}}><input value={newOrg} onChange={e=>setNewOrg(e.target.value)} placeholder="Nom organisme..."/><button className="btn btn-p btn-sm" onClick={()=>{if(newOrg.trim()){onAddOrg(newOrg.trim());set("client_org",newOrg.trim());setNewOrg("");setShowOrg(false);}}}><Ic n="check" s={11}/></button></div>}
               </div>
-              <div className="fg"><label className="lbl">SIRET</label><input value={f.siret||""} onChange={e=>set("siret",e.target.value)} placeholder="828 289 215 00015" style={{fontFamily:"var(--fm)"}}/></div>
               <div className="fg"><label className="lbl">Email</label><input type="email" value={f.email} onChange={e=>set("email",e.target.value)}/></div>
               <div className="fg"><label className="lbl">Telephone</label><input value={f.phone} onChange={e=>set("phone",e.target.value)}/></div>
-              <div className="fg"><label className="lbl">Representant legal</label><input value={f.representant||""} onChange={e=>set("representant",e.target.value)} placeholder="Nom du representant"/></div>
-              <div className="fg"><label className="lbl">Denomination sociale</label><input value={f.company_name||""} onChange={e=>set("company_name",e.target.value)} placeholder="Nom de l'entreprise"/></div>
               <div className="fg" style={{gridColumn:"1/-1"}}><label className="lbl">Adresse</label><input value={f.address} onChange={e=>set("address",e.target.value)}/></div>
-              <div className="fg"><label className="lbl">Code postal</label><input value={f.postal_code} onChange={e=>set("postal_code",e.target.value)}/></div>
               <div className="fg"><label className="lbl">Parcelle cadastrale</label><input value={f.parcelle} onChange={e=>set("parcelle",e.target.value)} placeholder="Ex: AB 0012"/></div>
             </div>
             {/* Travaux — single type only */}
@@ -650,7 +688,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
           {/* RIGHT: comments */}
           <div style={{borderLeft:"1.5px solid var(--bd)",paddingLeft:20}}>
             <div className="sec">Commentaire initial</div>
-            <textarea value={iCmt} onChange={e=>setICmt(e.target.value)} placeholder="Ajouter un commentaire..." style={{minHeight:180}}/>
+            <textarea value={iCmt} onChange={e=>setICmt(e.target.value)} placeholder="Ajouter un commentaire..." style={{minHeight:120}}/>
             <div style={{fontSize:11,color:"var(--tx4)",marginTop:6}}>Ce commentaire sera envoye par email au client.</div>
           </div>
         </div>
@@ -669,8 +707,24 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
   const [cmt,setCmt]=useState("");
   const [previewDoc,setPreviewDoc]=useState(null);
   const [assignConfirm,setAssignConfirm]=useState(false);
+  // Scanner DP dans l'onglet Documents
+  const [dpScanning,setDpScanning]=useState(false);
+  const [dpScanResult,setDpScanResult]=useState(null);
+  const dpScanRef=useRef();
   const fRef=useRef();
-  const save=u=>{const nd={...d,...u,updated:new Date().toISOString().split("T")[0]};setD(nd);onUpdate(nd);};
+  const save=u=>{
+    const nd={...d,...u,updated:new Date().toISOString().split("T")[0]};
+    // Si le DP change, mettre à jour l'ID du dossier
+    if(u.dp_number){const oldId=nd.id;nd.id=dossierId(u.dp_number,oldId);nd._oldId=oldId;}
+    setD(nd);onUpdate(nd);
+  };
+  const scanDpFromDoc=async(file)=>{
+    setDpScanning(file.type?.startsWith("image/")?"ocr":true);setDpScanResult(null);
+    const dp=await extractDP(file);
+    setDpScanning(false);
+    if(dp){setDpScanResult(dp);save({dp_number:dp});toast("N° DP extrait et enregistré : "+dp,"s");}
+    else setDpScanResult("none");
+  };
 
   // Résoudre l'email mairie : champ dédié → scan commentaires
   const resolveMairieEmail=(dossier)=>{
@@ -729,9 +783,9 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
     <div className="modal">
       <div className="mhdr">
         <div>
-          <div style={{fontSize:10,color:"var(--or)",fontWeight:700,marginBottom:3,fontFamily:"var(--fm)"}}>{d.id} <span className="ago">• modifie il y a {timeAgo(d.updated)}</span></div>
+          <div style={{fontSize:10,color:"var(--or)",fontWeight:800,marginBottom:3}}>{d.id} <span className="ago" style={{fontWeight:500}}>• modifié il y a {timeAgo(d.updated)}</span></div>
           <h2 style={{fontSize:18,fontWeight:800}}>{d.client}</h2>
-          <div style={{fontSize:13,color:"var(--tx3)",marginTop:1}}>{d.address}{d.postal_code&&<span style={{marginLeft:8,fontWeight:600,color:"var(--tx2)"}}>{d.postal_code}</span>}</div>
+          <div style={{fontSize:13,color:"var(--tx3)",marginTop:1}}>{d.address}</div>
         </div>
         <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"flex-start"}}>
           <SBadge status={d.status}/>
@@ -769,13 +823,13 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             <div>
-              {[["Email",d.email],["Telephone",d.phone],["Adresse",d.address,true],["Code postal",d.postal_code],["N° DP",d.dp_number],["Parcelle",d.parcelle]].map(([l,v,full])=><div key={l} style={{marginBottom:12,...(full?{gridColumn:"1/-1"}:{})}}>
+              {[["Email",d.email],["Telephone",d.phone],["Adresse",d.address,true],["N° DP",d.dp_number],["Parcelle",d.parcelle]].map(([l,v,full])=><div key={l} style={{marginBottom:12,...(full?{gridColumn:"1/-1"}:{})}}>
                 <div style={{fontSize:9,fontWeight:700,color:"var(--tx4)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:3}}>{l}</div>
-                <div style={{fontSize:13,fontWeight:500,fontFamily:l==="N° DP"?"var(--fm)":"var(--ff)"}}>{v||"—"}</div>
+                <div style={{fontSize:13,fontWeight:500,fontFamily:"var(--ff)"}}>{v||"—"}</div>
               </div>)}
               {/* Bloc relances automatiques */}
-              {(d.date_envoi_dp||d.mairie_email)&&<div style={{background:"#eef2ff",border:"1.5px solid #c7d2fe",borderRadius:"var(--r)",padding:"10px 12px",marginTop:4}}>
-                <div style={{fontSize:9,fontWeight:800,color:"#6366f1",textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}}>⏰ Relances auto</div>
+              {(d.date_envoi_dp||d.mairie_email)&&<div style={{background:"var(--or-l)",border:"1.5px solid rgba(232,80,26,.25)",borderRadius:"var(--r)",padding:"10px 12px",marginTop:4}}>
+                <div style={{fontSize:9,fontWeight:800,color:"var(--or)",textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}}>⏰ Relances auto</div>
                 {d.mairie_email&&<div style={{fontSize:11,color:"#374151",marginBottom:3}}><span style={{color:"#6B6B60"}}>Mairie : </span><strong>{d.mairie_email}</strong></div>}
                 {d.date_envoi_dp&&(()=>{
                   const sent=new Date(d.date_envoi_dp);
@@ -787,12 +841,12 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
                       <span style={{color:"#6B6B60"}}>Envoi dossier : </span>
                       <strong>{sent.toLocaleDateString("fr-FR")}</strong>
                     </div>
-                    <div style={{fontSize:11,marginBottom:2,color:d.relance_recepisee_at?"#059669":"#6366f1"}}>
+                    <div style={{fontSize:11,marginBottom:2,color:d.relance_recepisee_at?"#059669":"var(--or)"}}>
                       {d.relance_recepisee_at?"✅":"📧"} Relance récépissé (J+6) : <strong>{j6.toLocaleDateString("fr-FR")}</strong>
                       {d.relance_recepisee_at&&<span style={{color:"#059669",marginLeft:5,fontSize:10}}>envoyée</span>}
                       {!d.relance_recepisee_at&&j6<=today&&<span style={{color:"#dc2626",marginLeft:5,fontSize:10,fontWeight:700}}>EN ATTENTE</span>}
                     </div>
-                    <div style={{fontSize:11,color:d.relance_accord_dp_at?"#059669":"#6366f1"}}>
+                    <div style={{fontSize:11,color:d.relance_accord_dp_at?"#059669":"var(--or)"}}>
                       {d.relance_accord_dp_at?"✅":"📧"} Relance accord DP (J+30) : <strong>{j30.toLocaleDateString("fr-FR")}</strong>
                       {d.relance_accord_dp_at&&<span style={{color:"#059669",marginLeft:5,fontSize:10}}>envoyée</span>}
                       {!d.relance_accord_dp_at&&j30<=today&&<span style={{color:"#dc2626",marginLeft:5,fontSize:10,fontWeight:700}}>EN ATTENTE</span>}
@@ -819,16 +873,34 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
 
         {tab==="avancement"&&<Avancement d={d} save={save} toast={toast}/>}
 
-        {tab==="documents"&&<GEDModule
-          dossierId={d.id}
-          dossierData={d}
-          onDossierUpdate={(id,extracted)=>{
-            if(extracted.dp_number&&!d.dp_number){
-              save({dp_number:extracted.dp_number});
-              toast("N° DP extrait et enregistré : "+extracted.dp_number,"s");
-            }
-          }}
-        />}
+        {tab==="documents"&&<div>
+          {/* Scanner récépissé de dépôt */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 12px",background:"var(--bg3)",borderRadius:"var(--r)",border:"1.5px solid var(--bd)"}}>
+            <div style={{flex:1,fontSize:12,color:"var(--tx3)"}}>
+              {d.dp_number?<span>N° DP : <strong style={{color:"var(--or)"}}>{d.dp_number}</strong></span>:<span style={{fontStyle:"italic"}}>Aucun N° DP</span>}
+            </div>
+            <button className="btn btn-s btn-sm" style={{fontSize:10,padding:"4px 9px",gap:4}} onClick={()=>dpScanRef.current?.click()} disabled={!!dpScanning}>
+              <Ic n="scan" s={10}/>{dpScanning?"Scan...":"Récépissé de dépôt"}
+            </button>
+            <input ref={dpScanRef} type="file" accept=".pdf,application/pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" style={{display:"none"}}
+              onChange={e=>{if(e.target.files?.[0])scanDpFromDoc(e.target.files[0]);e.target.value="";}}/>
+          </div>
+          {dpScanning&&<div style={{display:"flex",gap:6,fontSize:11,color:"var(--tx4)",padding:"0 0 8px"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>{dpScanning==="ocr"?"OCR en cours...":"Lecture..."}</div>}
+          {dpScanResult&&dpScanResult!=="none"&&<div style={{background:"var(--gr-l)",border:"1px solid #a7f3d0",borderRadius:"var(--r)",padding:"6px 10px",display:"flex",gap:6,marginBottom:10,fontSize:11}}>
+            <Ic n="check" s={11} c="var(--gr)"/><span><strong style={{color:"var(--gr)"}}>N° DP détecté</strong> — {dpScanResult}</span>
+          </div>}
+          {dpScanResult==="none"&&<div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:"var(--r)",padding:"5px 10px",fontSize:11,color:"#b45309",marginBottom:10}}>Aucun N° DP trouvé.</div>}
+          <GEDModule
+            dossierId={d.id}
+            dossierData={d}
+            onDossierUpdate={(id,extracted)=>{
+              if(extracted.dp_number){
+                save({dp_number:extracted.dp_number});
+                toast("N° DP extrait et enregistré : "+extracted.dp_number,"s");
+              }
+            }}
+          />
+        </div>}
 
         {tab==="commentaires"&&<div style={{display:"grid",gridTemplateColumns:"1fr 270px",gap:20}}>
           {/* ── Colonne gauche : commentaires ── */}
@@ -852,14 +924,17 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
 
           {/* ── Colonne droite : Contact mairie ── */}
           <div>
-            <div style={{background:"#eef2ff",border:"1.5px solid #c7d2fe",borderRadius:"var(--rl)",padding:14}}>
-              <div style={{fontSize:11,fontWeight:800,color:"#6366f1",textTransform:"uppercase",letterSpacing:".06em",marginBottom:12}}>🏛️ Contact mairie</div>
+            <div style={{background:"var(--or-l)",border:"1.5px solid rgba(232,80,26,.25)",borderRadius:"var(--rl)",padding:14}}>
+              <div style={{fontSize:11,fontWeight:800,color:"var(--or)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:12}}>⏰ Contact mairie</div>
 
+              {/* Date envoi DP */}
+              <div className="fg" style={{marginBottom:10}}>
+                <label className="lbl">Date d'envoi DP <span style={{fontSize:9,color:"var(--or)",fontWeight:600,background:"rgba(232,80,26,.1)",padding:"1px 5px",borderRadius:6}}>J+6</span></label>
+                <input type="date" value={d.date_envoi_dp||""} onChange={e=>save({date_envoi_dp:e.target.value})} style={{fontSize:12}}/>
+              </div>
               {/* Email mairie */}
               <div className="fg" style={{marginBottom:10}}>
-                <label className="lbl">Email mairie
-                  <span style={{marginLeft:6,fontSize:9,color:"#6366f1",background:"#e0e7ff",padding:"1px 5px",borderRadius:6,fontWeight:700}}>relances auto</span>
-                </label>
+                <label className="lbl">Email mairie <span style={{fontSize:9,color:"var(--or)",fontWeight:600,background:"rgba(232,80,26,.1)",padding:"1px 5px",borderRadius:6}}>J+30</span></label>
                 <input type="email" value={d.mairie_email||""} placeholder="urbanisme@mairie-xxx.fr"
                   onChange={e=>save({mairie_email:e.target.value})}
                   style={{fontSize:12}}/>
@@ -1016,8 +1091,13 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
     return mq&&ms&&ma&&mw&&mf&&mn&&mcd&&mud;
   }),[dossiers,globalQ,globalFilters]);
 
-  const create=d=>{setDossiers(p=>[d,...p]);setCreating(false);toast("Dossier cree !","s");};
-  const upd=d=>{setDossiers(p=>p.map(x=>x.id===d.id?d:x));setSel(d);};
+  const create=d=>{const nd={...d,id:dossierId(d.dp_number,d.id)};setDossiers(p=>[nd,...p]);setCreating(false);toast("Dossier cree !","s");};
+  const upd=d=>{
+    // Si l'ID a changé (DP extrait → nouvel ID), on retrouve l'ancien via _oldId
+    const lookupId=d._oldId||d.id;
+    setDossiers(p=>p.map(x=>x.id===lookupId||x.id===d.id?d:x));
+    setSel(d);
+  };
   const del=id=>{setDossiers(p=>p.filter(x=>x.id!==id));setSel(null);setConfirm(null);toast("Supprime","i");};
 
   // ── EXPORT EXCEL ──
@@ -1136,7 +1216,7 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
               </tr></thead>
               <tbody>
                 {preview.rows.slice(0,20).map((d,i)=><tr key={i}>
-                  <td style={{fontSize:10,fontFamily:"var(--fm)",color:"var(--or)"}}>{d.id}</td>
+                  <td style={{fontSize:10,color:"var(--or)"}}>{d.id}</td>
                   <td style={{fontWeight:600}}>{d.client||<span style={{color:"var(--re)"}}>— Manquant</span>}</td>
                   <td>{d.client_org}</td>
                   <td><SBadge status={d.status}/></td>
@@ -1190,8 +1270,8 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
           </tr></thead>
           <tbody>
             {!filtered.length&&<tr><td colSpan={12} style={{textAlign:"center",padding:32,color:"var(--tx4)"}}>Aucun resultat</td></tr>}
-            {filtered.map(d=><tr key={d.id} onClick={()=>setSel(d)}>
-              <td><div style={{fontWeight:700,fontSize:11,color:"var(--or)",fontFamily:"var(--fm)",whiteSpace:"nowrap"}}>{d.id}</div><div className="ago">modifie {timeAgo(d.updated)}</div></td>
+            {filtered.map(d=><tr key={d.id} style={{cursor:"pointer",userSelect:"text"}} onClick={()=>{const s=window.getSelection();if(s&&s.toString().length>0)return;setSel(d);}}>
+              <td><div style={{fontWeight:800,fontSize:11,color:"var(--or)",whiteSpace:"nowrap"}}>{d.id}</div><div className="ago">modifié {timeAgo(d.updated)}</div></td>
               <td><div style={{fontWeight:700,fontSize:14}}>{d.client}</div>{d.client_org&&<div style={{fontSize:11,color:"var(--tx4)"}}>{d.client_org}</div>}</td>
               <td><div style={{display:"flex",flexWrap:"wrap",gap:3}}>{(d.works||[]).map((w,i)=><WChip key={i} type={w.type}/>)}</div></td>
               <td style={{maxWidth:160}}><div style={{fontSize:12,color:"var(--tx2)",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.address}</div>{d.postal_code&&<div style={{fontSize:12,fontWeight:700,color:"var(--tx3)",marginTop:1}}>{d.postal_code}</div>}</td>
@@ -1258,38 +1338,61 @@ function Dashboard({dossiers}){
 function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
   const [q,setQ]=useState("");const [creating,setCreating]=useState(false);const [editC,setEditC]=useState(null);
   const [f,setF]=useState({name:"",address:"",siret:"",representant:"",email:""});
-  const [scan,setScan]=useState(false);const kRef=useRef();
+  const [scan,setScan]=useState(false);const [kbR,setKbR]=useState(null);const kRef=useRef();
   const filtered=clientsOrg.filter(c=>!q||c.name.toLowerCase().includes(q.toLowerCase())||c.siret?.includes(q));
   const save=()=>{
     if(!f.name.trim())return;
     if(editC){setClientsOrg(p=>p.map(c=>c.id===editC.id?{...c,...f}:c));}
     else{setClientsOrg(p=>[...p,{id:Date.now(),...f}]);}
     setCreating(false);setEditC(null);setF({name:"",address:"",siret:"",representant:"",email:""});
-    toast("Client sauvegarde","s");
+    toast("Partenaire sauvegarde","s");
   };
-  const scanKbis=async(file)=>{setScan(true);const s=await extractKbis(file);setScan(false);if(s){setF(x=>({...x,siret:s}));toast("SIRET extrait : "+s,"s");}else toast("SIRET non detecte","e");};
+  const scanKbisClient=async(file)=>{
+    const isPdf=file.type?.includes("pdf");const isImg=file.type?.startsWith("image/");
+    if(!isPdf&&!isImg)return toast("Formats acceptés : PDF, JPG, PNG","e");
+    setScan(isImg?"ocr":true);setKbR(null);
+    const res=await extractKbis(file);
+    setScan(false);
+    if(res&&(res.siret||res.company_name)){
+      setKbR(res);
+      setF(x=>({...x,...(res.company_name?{name:res.company_name}:{}),...(res.siret?{siret:res.siret}:{}),...(res.address?{address:res.address}:{}),...(res.representant?{representant:res.representant}:{})}));
+      toast("Données KBIS extraites avec succès","s");
+    }else{setKbR({error:"Aucune donnée KBIS trouvée"});toast("Aucune donnée KBIS trouvée","e");}
+  };
   const openEdit=(c)=>{setEditC(c);setF({name:c.name,address:c.address||"",siret:c.siret||"",representant:c.representant||"",email:c.email||""});setCreating(true);};
   const prepEmail=(c)=>{const s=encodeURIComponent("Contact — "+c.name);const b=encodeURIComponent("Bonjour,\n\nSuite a notre echange concernant vos dossiers en cours...\n\nCordialement,\nEco Formalites");window.open("mailto:"+c.email+"?subject="+s+"&body="+b);};
   return <div>
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,flexWrap:"wrap",gap:9}}>
-      <h2 style={{fontSize:19,fontWeight:800}}>Clients <span style={{fontSize:13,color:"var(--tx3)",fontWeight:500}}>({filtered.length})</span></h2>
-      <button className="btn btn-p" onClick={()=>{setEditC(null);setF({name:"",address:"",siret:"",representant:"",email:""});setCreating(true);}}><Ic n="plus" s={13}/>Ajouter client</button>
+      <h2 style={{fontSize:19,fontWeight:800}}>Partenaires <span style={{fontSize:13,color:"var(--tx3)",fontWeight:500}}>({filtered.length})</span></h2>
+      <button className="btn btn-p" onClick={()=>{setEditC(null);setF({name:"",address:"",siret:"",representant:"",email:""});setCreating(true);}}><Ic n="plus" s={13}/>Ajouter partenaire</button>
     </div>
     <div className="srw" style={{marginBottom:14}}><span className="srw-ic"><Ic n="search" s={13}/></span><input className="srch" placeholder="Nom, SIRET..." value={q} onChange={e=>setQ(e.target.value)}/></div>
     {creating&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setCreating(false)}>
       <div className="modal" style={{maxWidth:580}}>
-        <div className="mhdr"><h2 style={{fontSize:16,fontWeight:800}}>{editC?"Modifier":"Nouveau client"}</h2><button className="bic" onClick={()=>setCreating(false)}><Ic n="x"/></button></div>
+        <div className="mhdr"><h2 style={{fontSize:16,fontWeight:800}}>{editC?"Modifier":"Nouveau partenaire"}</h2><button className="bic" onClick={()=>setCreating(false)}><Ic n="x"/></button></div>
         <div className="mbdy">
-          {/* KBIS drop */}
-          <div style={{border:"2px dashed var(--bd2)",borderRadius:"var(--rl)",padding:18,textAlign:"center",cursor:"pointer",background:"var(--bg3)",marginBottom:16}} onClick={()=>kRef.current&&kRef.current.click()}
-            onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--or)";}}
-            onDragLeave={e=>{e.currentTarget.style.borderColor="";}}
-            onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="";if(e.dataTransfer.files[0])scanKbis(e.dataTransfer.files[0]);}}>
-            <Ic n="file" s={22} c="var(--or)"/>
-            <div style={{fontSize:12,fontWeight:600,marginTop:6,color:"var(--tx2)"}}>Glisser un PDF KBIS pour auto-remplir</div>
-            {scan&&<div style={{fontSize:11,color:"var(--tx3)",marginTop:4}}>Lecture en cours...</div>}
+          {/* KBIS extraction */}
+          <div style={{background:"var(--or-l)",border:"1.5px solid rgba(232,80,26,.25)",borderRadius:"var(--rl)",padding:14,marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:800,color:"var(--or)",marginBottom:10,textTransform:"uppercase",letterSpacing:".06em"}}>Extraction KBIS — Pré-remplissage automatique</div>
+            <div
+              onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--or)";if(e.dataTransfer.files?.[0])scanKbisClient(e.dataTransfer.files[0]);}}
+              onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor="var(--or)";}}
+              onDragLeave={e=>{e.currentTarget.style.borderColor="rgba(232,80,26,.3)";}}
+              onClick={()=>!scan&&kRef.current?.click()}
+              style={{border:"2px dashed rgba(232,80,26,.3)",borderRadius:"var(--r)",padding:"18px 12px",textAlign:"center",cursor:scan?"not-allowed":"pointer",background:scan?"#fef6f2":"#fff",transition:"all .15s"}}
+            >
+              <input ref={kRef} type="file" accept=".pdf,application/pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])scanKbisClient(e.target.files[0]);e.target.value="";}}/>
+              {scan?<div style={{display:"flex",gap:6,justifyContent:"center",fontSize:12,color:"var(--tx3)"}}><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span>{scan==="ocr"?"OCR en cours sur image KBIS...":"Analyse du KBIS en cours..."}</div>
+              :<div><div style={{fontSize:13,fontWeight:600,color:"var(--or)"}}>Glisser un KBIS ici (PDF, JPG, PNG)</div><div style={{fontSize:11,color:"#6B6B60",marginTop:3}}>Nom entreprise, adresse et représentant extraits automatiquement</div></div>}
+            </div>
+            {kbR&&!kbR.error&&<div style={{background:"#ecfdf5",border:"1px solid #a7f3d0",borderRadius:"var(--r)",padding:"10px 12px",marginTop:8}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#059669",marginBottom:4}}>Donnees KBIS extraites avec succes</div>
+              {kbR.company_name&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Nom entreprise : </span><strong>{kbR.company_name}</strong></div>}
+              {kbR.address&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Adresse : </span><strong>{kbR.address}</strong></div>}
+              {kbR.representant&&<div style={{fontSize:11}}><span style={{color:"#6B6B60"}}>Représentant : </span><strong>{kbR.representant}</strong></div>}
+            </div>}
+            {kbR?.error&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"var(--r)",padding:"7px 10px",fontSize:11,color:"#b91c1c",marginTop:8}}>{kbR.error}</div>}
           </div>
-          <input ref={kRef} type="file" accept=".pdf" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])scanKbis(e.target.files[0]);e.target.value="";}}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div className="fg" style={{gridColumn:"1/-1"}}><label className="lbl">Nom entreprise *</label><input value={f.name} onChange={e=>setF(x=>({...x,name:e.target.value}))}/></div>
             <div className="fg" style={{gridColumn:"1/-1"}}><label className="lbl">Adresse</label><input value={f.address} onChange={e=>setF(x=>({...x,address:e.target.value}))}/></div>
@@ -1302,7 +1405,7 @@ function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
       </div>
     </div>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:11}}>
-      {!filtered.length&&<p style={{color:"var(--tx4)",fontSize:12}}>Aucun client</p>}
+      {!filtered.length&&<p style={{color:"var(--tx4)",fontSize:12}}>Aucun partenaire</p>}
       {filtered.map(c=>{const doss=dossiers.filter(d=>d.client_org===c.name);return<div className="card" key={c.id}>
         <div style={{display:"flex",gap:10,marginBottom:10}}>
           <div className="av" style={{width:42,height:42,fontSize:14,borderRadius:11,flexShrink:0}}>{c.name[0]}</div>
@@ -1310,7 +1413,7 @@ function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
           <span style={{background:"var(--or-l)",color:"var(--or)",padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,border:"1px solid rgba(232,80,26,.2)",flexShrink:0}}>{doss.length} dossier{doss.length!==1?"s":""}</span>
         </div>
         {c.representant&&<div style={{fontSize:11,color:"var(--tx2)",marginBottom:2}}><strong>Rep. :</strong> {c.representant}</div>}
-        {c.siret&&<div style={{fontSize:11,color:"var(--tx3)",marginBottom:2,fontFamily:"var(--fm)"}}>SIRET: {c.siret}</div>}
+        {c.siret&&<div style={{fontSize:11,color:"var(--tx3)",marginBottom:2}}>SIRET: {c.siret}</div>}
         {c.address&&<div style={{fontSize:11,color:"var(--tx3)",marginBottom:10}}>{c.address}</div>}
         <div style={{display:"flex",gap:6}}>
           <button className="btn btn-s btn-sm" onClick={()=>openEdit(c)}><Ic n="edit" s={10}/>Modifier</button>
@@ -1334,7 +1437,7 @@ function Paiements({dossiers,setDossiers,currentUser,toast}){
       <h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>En attente</h3>
       {!unpaid.length&&<p style={{color:"var(--tx4)",fontSize:12}}>Tout est a jour 🎉</p>}
       {unpaid.map(d=><div key={d.id} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 0",borderBottom:"1px solid var(--bd)",flexWrap:"wrap"}}>
-        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{d.client}</div><div style={{fontSize:10,color:"var(--tx4)",fontFamily:"var(--fm)"}}>{d.id}</div></div>
+        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{d.client}</div><div style={{fontSize:10,color:"var(--tx4)"}}>{d.id}</div></div>
         <div style={{fontWeight:800,fontSize:16,color:"var(--or)"}}>{(d.amount||0).toLocaleString("fr-FR")} €</div>
         <button className="btn btn-s btn-sm" onClick={()=>toast("Lien envoye","i")}><Ic n="mail" s={10}/>Lien</button>
         {currentUser.role==="superadmin"&&<button className="btn btn-g btn-sm" onClick={()=>mark(d.id)}><Ic n="check" s={10}/>Valider</button>}
@@ -1343,7 +1446,7 @@ function Paiements({dossiers,setDossiers,currentUser,toast}){
     <div className="card">
       <h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>Payes</h3>
       {paid.map(d=><div key={d.id} style={{display:"flex",alignItems:"center",gap:11,padding:"9px 0",borderBottom:"1px solid var(--bd)"}}>
-        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{d.client}</div><div style={{fontSize:10,color:"var(--tx4)",fontFamily:"var(--fm)"}}>{d.id}</div></div>
+        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{d.client}</div><div style={{fontSize:10,color:"var(--tx4)"}}>{d.id}</div></div>
         <div style={{fontWeight:700,color:"var(--gr)",fontSize:14}}>{(d.amount||0).toLocaleString("fr-FR")} €</div>
         <span style={{color:"var(--gr)",fontSize:10,fontWeight:700,background:"var(--gr-l)",padding:"2px 8px",borderRadius:20}}>✓ Paye</span>
       </div>)}
@@ -1539,7 +1642,7 @@ export default function App(){
   ]:[
     {id:"dashboard",icon:"bar",label:"Dashboard"},
     {id:"dossiers",icon:"folder",label:"Dossiers",badge:dossiers.filter(d=>!d.assignee).length},
-    {id:"clients",icon:"users",label:"Clients",badge:clientsOrg.length},
+    {id:"clients",icon:"users",label:"Partenaires",badge:clientsOrg.length},
     ...(isSA?[{id:"paiements",icon:"credit",label:"Paiements",badge:dossiers.filter(d=>!d.paid).length}]:[]),
     {id:"ged",icon:"file",label:"GED"},
     {id:"emails",icon:"mail",label:"Emails"},
@@ -1548,7 +1651,7 @@ export default function App(){
     ...(isSA?[{id:"admin",icon:"settings",label:"Administration"}]:[]),
   ];
 
-  const titles={dashboard:"Tableau de bord",dossiers:"Dossiers",clients:"Clients",paiements:"Paiements",ged:"GED — Documents",emails:"Emails",import:"Import",profil:"Mon profil",admin:"Administration"};
+  const titles={dashboard:"Tableau de bord",dossiers:"Dossiers",clients:"Partenaires",paiements:"Paiements",ged:"GED — Documents",emails:"Emails",import:"Import",profil:"Mon profil",admin:"Administration"};
 
   const setFilter=(k,v)=>{setGlobalFilters(f=>({...f,[k]:f[k]===v?"":v}));if(page!=="dossiers")setPage("dossiers");};
   const hasFilter=Object.values(globalFilters).some(Boolean);
@@ -1561,7 +1664,7 @@ export default function App(){
     dossiers:<Dossiers dossiers={visibleDossiers} setDossiers={setDossiers} currentUser={user} toast={toast} addNotif={addNotif} globalQ={globalQ} globalFilters={globalFilters} clientsOrg={clientsOrg} setClientsOrg={setClientsOrg}/>,
     clients:<Clients dossiers={visibleDossiers} clientsOrg={clientsOrg} setClientsOrg={setClientsOrg} toast={toast}/>,
     paiements:<Paiements dossiers={visibleDossiers} setDossiers={setDossiers} currentUser={user} toast={toast}/>,
-    ged:<div className="content"><GEDModule dossiers={visibleDossiers} onDossierUpdate={(id,data)=>{setDossiers(ds=>ds.map(d=>d.id===id?{...d,...(data.dp_number?{dp_number:data.dp_number}:{})}:d));}}/></div>,
+    ged:<div className="content"><GEDModule dossiers={visibleDossiers} onDossierUpdate={(id,data)=>{setDossiers(ds=>ds.map(d=>{if(d.id!==id)return d;const nd={...d,...(data.dp_number?{dp_number:data.dp_number}:{})};if(data.dp_number)nd.id=dossierId(data.dp_number,d.id);return nd;}));}}/></div>,
     emails:<EmailModule dossiers={visibleDossiers}/>,
     import:<Import setDossiers={setDossiers} toast={toast}/>,
     profil:<Profil currentUser={user} users={users} setUsers={setUsers} toast={toast}/>,
@@ -1607,7 +1710,7 @@ export default function App(){
             <input className={"fsel"+(globalFilters.client_name?" on":"")}
               value={globalFilters.client_name}
               onChange={e=>{setGlobalFilters(f=>({...f,client_name:e.target.value}));if(e.target.value&&page!=="dossiers")setPage("dossiers");}}
-              placeholder="Client..."
+              placeholder="Partenaire..."
               style={{width:100}}/>
             <select className={"fsel"+(globalFilters.status?" on":"")} value={globalFilters.status} onChange={e=>setFilter("status",e.target.value)}>
               <option value="">Statut</option>{ALL_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
