@@ -16,6 +16,7 @@ const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://lo
 
 export const DOC_CATEGORIES = [
   { key: 'dp',            label: 'Demande Préalable', icon: '🏛️', color: '#6366f1', bg: '#eef2ff', extractDP: true },
+  { key: 'recepisse',     label: 'Récépissé de dépôt', icon: '📨', color: '#059669', bg: '#ecfdf5', extractDP: true },
   { key: 'kbis',          label: 'KBIS',              icon: '🏢', color: '#1A4A8A', bg: '#EEF3FD', extractKbis: true },
   { key: 'raccordement',  label: 'Raccordement',       icon: '⚡', color: '#059669', bg: '#ecfdf5' },
   { key: 'consuel',       label: 'CONSUEL',            icon: '✅', color: '#7c3aed', bg: '#f5f3ff' },
@@ -119,35 +120,35 @@ function isRecepisseFile(filename) {
 
 async function extractDPNumber(file) {
   try {
-    const text = await extractText(file);
-    const patterns = [
-      // Format officiel DP : DP + 3+3+2+5 = 13 chiffres (ex: DP 075 111 24 00001)
+    const txt = await extractText(file);
+    // Patterns du plus spécifique au plus souple
+    const pats = [
+      // Format standard : DP 075 111 24 00001 (3+3+2+5 chiffres)
       /DP[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{2})[\s\-\.\/]?(\d{5})/gi,
-      // Variante : DP collé ou avec séparateurs variés
+      // Variante chiffres : DP 075 111 2400 001
       /DP[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2,4}[\s\-]?\d{3,6}/gi,
-      // DP suivi de 13 chiffres groupés
+      // DP + 13 chiffres groupés
       /\bDP\s{0,3}\d[\d\s\-]{10,18}\d\b/gi,
-      // Format mixte : DP° ou N° DP avec 12 chiffres + 1 lettre (ex: 0751112L00001)
+      // Format code commune 5 chiffres : DP 76640 26 U0007 (5+2+lettre+chiffres)
+      /\bDP[°]?\s{0,3}\d{5}[\s\-]?\d{2}[\s\-]?[A-Z][\dA-Z]{0,5}/gi,
+      // Format avec lettres : DP 013 055 24 AB001
+      /(?:N°\s*)?DP[°]?\s{0,3}(\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?[A-Z]{1,2}[\s\-]?\d{2,5})/gi,
+      // Format mixte 7+lettre+5 : DP 0751112L00001
       /(?:N°\s*)?DP[°]?\s{0,3}(\d{7}[A-Z]\d{5})/gi,
-      // Format mixte : N° DP avec 10 chiffres + 2 lettres
-      /(?:N°\s*)?DP[°]?\s{0,3}(\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?[A-Z]{2}[\s\-]?\d{2})/gi,
-      // Format générique : N° DP suivi de 10-13 caractères alphanumériques
+      // N° DP générique alphanumérique
       /N[°o]\s*DP\s{0,3}([\dA-Z][\dA-Z\s\-]{9,17}[\dA-Z])/gi,
+      // Ultra-souple : DP suivi de 10+ caractères alphanum avec espaces/tirets
+      /\bDP[°]?\s{1,3}[\dA-Z][\dA-Z\s\-]{8,20}[\dA-Z]\b/gi,
     ];
-    for (const p of patterns) {
-      const m = text.match(p);
+    for (const p of pats) {
+      const m = txt.match(p);
       if (m) {
         const raw = m[0].trim();
-        const chars = raw.replace(/^.*?DP[°]?\s*/i, '').replace(/[\s\-\.\/]/g, '');
-        // 13 chiffres purs → format standard
         const digits = raw.replace(/[^0-9]/g, '');
-        if (digits.length >= 13 && !/[A-Z]/i.test(chars.slice(0, 13))) {
+        // 13 chiffres purs sans lettres → format standard 3+3+2+5
+        if (digits.length >= 13 && !/[A-Z]/i.test(raw.replace(/^.*?DP[°]?\s*/i, '').replace(/[\s\-\.\/]/g, '').slice(0, 13)))
           return `DP ${digits.slice(0,3)} ${digits.slice(3,6)} ${digits.slice(6,8)} ${digits.slice(8,13)}`;
-        }
-        // Format mixte avec lettres → garder tel quel, nettoyé
-        if (chars.length >= 12) {
-          return `DP ${chars}`;
-        }
+        // Sinon garder le match brut (avec lettres, format commune 5 chiffres, etc.)
         return raw.replace(/\s+/g, ' ').slice(0, 50);
       }
     }
@@ -471,17 +472,18 @@ function DropZone({ dossierId, category, onUploaded, onExtracted }) {
 
       const isRD = isRecepisseFile(file.name);
 
-      // Extraction DP : catégorie "dp" OU fichier récépissé (RD/rd/recepisse)
+      // Extraction DP : catégorie "dp"/"recepisse" OU fichier récépissé (RD/rd/recepisse)
+      const isRecepisseCat = category === 'recepisse';
       if (catDef.extractDP || isRD) {
         setProgress(isImage
           ? `🔍 OCR en cours — extraction N° DP depuis image...`
-          : isRD
+          : (isRD || isRecepisseCat)
             ? `📄 Récépissé détecté — extraction N° DP...`
             : 'Extraction du N° DP...');
         const dp = await extractDPNumber(file);
         if (dp) {
           extractedData = { ...extractedData, dp_number: dp };
-          if (isRD) extractedData = { ...extractedData, forceApply: true };
+          if (isRD || isRecepisseCat) extractedData = { ...extractedData, forceApply: true };
         }
       }
 

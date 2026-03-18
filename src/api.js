@@ -56,6 +56,11 @@ export const getUsers = async () => {
   catch (err) { console.error('getUsers:', err); return []; }
 };
 
+export const updateUserSmtp = async (userId, smtp_password) => {
+  try { return await request(`/users/${userId}/smtp`, { method: 'PUT', body: JSON.stringify({ smtp_password }) }); }
+  catch (err) { console.error('updateUserSmtp:', err); throw err; }
+};
+
 // ── Documents (GED) ──────────────────────────────────────────────────────────
 
 export const getDocuments = async (filters = {}) => {
@@ -109,6 +114,20 @@ export const updateDocument = async (id, data) => {
   catch (err) { console.error('updateDocument:', err); throw err; }
 };
 
+export const saveEditedDocument = async (docId, pdfBytes) => {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const res = await fetch(`${API_URL}/documents/${docId}/save-edited`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/pdf' },
+    body: pdfBytes,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+};
+
 export const applyExtractedData = async (dossierId, data) => {
   try { return await request(`/documents/apply-extracted/${encodeURIComponent(dossierId)}`, { method: 'POST', body: JSON.stringify(data) }); }
   catch (err) { console.error('applyExtractedData:', err); throw err; }
@@ -148,13 +167,13 @@ export const previewEmail = async ({ template_id, dossier_id, variables = {} }) 
   catch (err) { console.error('previewEmail:', err); throw err; }
 };
 
-export const sendEmail = async ({ to, to_name, subject, body_html, body_text, template_id, dossier_id, variables = {} }) => {
-  try { return await request('/emails/send', { method: 'POST', body: JSON.stringify({ to, to_name, subject, body_html, body_text, template_id, dossier_id, variables }) }); }
+export const sendEmail = async ({ to, to_name, subject, body_html, body_text, template_id, dossier_id, variables = {}, from_email, from_name }) => {
+  try { return await request('/emails/send', { method: 'POST', body: JSON.stringify({ to, to_name, subject, body_html, body_text, template_id, dossier_id, variables, from_email, from_name }) }); }
   catch (err) { console.error('sendEmail:', err); throw err; }
 };
 
-export const scheduleEmail = async ({ to, to_name, subject, body_html, body_text, template_id, dossier_id, scheduled_at, variables = {} }) => {
-  try { return await request('/emails/schedule', { method: 'POST', body: JSON.stringify({ to, to_name, subject, body_html, body_text, template_id, dossier_id, scheduled_at, variables }) }); }
+export const scheduleEmail = async ({ to, to_name, subject, body_html, body_text, template_id, dossier_id, scheduled_at, variables = {}, from_email, from_name }) => {
+  try { return await request('/emails/schedule', { method: 'POST', body: JSON.stringify({ to, to_name, subject, body_html, body_text, template_id, dossier_id, scheduled_at, variables, from_email, from_name }) }); }
   catch (err) { console.error('scheduleEmail:', err); throw err; }
 };
 
@@ -179,4 +198,11 @@ export const getEmailLog = async (filters = {}) => {
     const params = new URLSearchParams(filters).toString();
     return await request(`/emails/log${params ? '?' + params : ''}`);
   } catch (err) { console.error('getEmailLog:', err); return []; }
+};
+
+// ── Urbanisme AI lookup ──────────────────────────────────────────────────────
+
+export const lookupUrbanisme = async (ville, code_postal) => {
+  try { return await request('/urbanisme/lookup', { method: 'POST', body: JSON.stringify({ ville, code_postal }) }); }
+  catch (err) { console.error('lookupUrbanisme:', err); throw err; }
 };

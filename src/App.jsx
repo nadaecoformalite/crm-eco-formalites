@@ -3,6 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import Tesseract from "tesseract.js";
 import EmailModule from "./EmailModule.jsx";
 import GEDModule, { DOC_CATEGORIES } from "./GEDModule.jsx";
+import { lookupUrbanisme, updateUserSmtp } from "./api.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
 const LOGO_SRC = "data:image/jpeg;base64,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";
@@ -122,9 +123,11 @@ async function extractDP(file){
       /DP[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{3})[\s\-\.\/]?(\d{2})[\s\-\.\/]?(\d{5})/gi,
       /DP[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2,4}[\s\-]?\d{3,6}/gi,
       /\bDP\s{0,3}\d[\d\s\-]{10,18}\d\b/gi,
+      /\bDP[°]?\s{0,3}\d{5}[\s\-]?\d{2}[\s\-]?[A-Z][\dA-Z]{0,5}/gi,
+      /(?:N°\s*)?DP[°]?\s{0,3}(\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?[A-Z]{1,2}[\s\-]?\d{2,5})/gi,
       /(?:N°\s*)?DP[°]?\s{0,3}(\d{7}[A-Z]\d{5})/gi,
-      /(?:N°\s*)?DP[°]?\s{0,3}(\d{3}[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?[A-Z]{2}[\s\-]?\d{2})/gi,
       /N[°o]\s*DP\s{0,3}([\dA-Z][\dA-Z\s\-]{9,17}[\dA-Z])/gi,
+      /\bDP[°]?\s{1,3}[\dA-Z][\dA-Z\s\-]{8,20}[\dA-Z]\b/gi,
     ];
     for(const p of pats){const m=txt.match(p);if(m){
       const raw=m[0].trim();const digits=raw.replace(/[^0-9]/g,"");
@@ -542,8 +545,8 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
   const isSA=currentUser.role==="superadmin";
   // Décompose client en prénom / nom pour l'édition
   const splitName=(full="")=>{const parts=(full||"").trim().split(/\s+/);return {prenom:parts[0]||"",nom:parts.slice(1).join(" ")||""};};
-  const blank={client:"",client_prenom:"",client_nom:"",client_org:"",email:"",phone:"",address:"",postal_code:"",dp_number:"",parcelle:"",
-    date_envoi_dp:"",mairie_email:"",siret:"",company_name:"",representant:"",kbis_address:"",
+  const blank={client:"",client_prenom:"",client_nom:"",client_org:"",email:"",phone:"",address:"",ville:"",postal_code:"",dp_number:"",parcelle:"",
+    date_envoi_dp:"",mairie_email:"",siret:"",company_name:"",representant:"",kbis_address:"",urbanisme_result:null,
     works:[{type:"PAC",formalites:["Demande Prealable"],kwc:"",kwc_c:""}],
     status:"en_attente",assignee:"",paid:false,amount:0,installed:false,
     docs:[],comments:[],avancement:{dp_checked:false,dp_envoi:"",dp_note:"",racc_checked:false,racc_date:"",racc_status:"",racc_note:"",cons_checked:false,cons_date:"",cons_note:"",tva_checked:false,tva_date:"",tva_note:""}
@@ -658,6 +661,8 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
               <div className="fg"><label className="lbl">Email</label><input type="email" value={f.email} onChange={e=>set("email",e.target.value)}/></div>
               <div className="fg"><label className="lbl">Telephone</label><input value={f.phone} onChange={e=>set("phone",e.target.value)}/></div>
               <div className="fg" style={{gridColumn:"1/-1"}}><label className="lbl">Adresse</label><input value={f.address} onChange={e=>set("address",e.target.value)}/></div>
+              <div className="fg"><label className="lbl">Ville</label><input value={f.ville||""} onChange={e=>set("ville",e.target.value)} placeholder="Ex: Marseille"/></div>
+              <div className="fg"><label className="lbl">Code postal</label><input value={f.postal_code||""} onChange={e=>set("postal_code",e.target.value)} placeholder="Ex: 13001"/></div>
               <div className="fg"><label className="lbl">Parcelle cadastrale</label><input value={f.parcelle} onChange={e=>set("parcelle",e.target.value)} placeholder="Ex: AB 0012"/></div>
             </div>
             {/* Travaux — single type only */}
@@ -711,6 +716,9 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
   const [dpScanning,setDpScanning]=useState(false);
   const [dpScanResult,setDpScanResult]=useState(null);
   const dpScanRef=useRef();
+  // Urbanisme AI lookup
+  const [urbLoading,setUrbLoading]=useState(false);
+  const [urbError,setUrbError]=useState(null);
   const fRef=useRef();
   const save=u=>{
     const nd={...d,...u,updated:new Date().toISOString().split("T")[0]};
@@ -724,6 +732,19 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
     setDpScanning(false);
     if(dp){setDpScanResult(dp);save({dp_number:dp});toast("N° DP extrait et enregistré : "+dp,"s");}
     else setDpScanResult("none");
+  };
+
+  const doUrbanismeLookup=async()=>{
+    const ville=d.ville;
+    if(!ville){toast("Renseignez d'abord la ville du dossier","w");return;}
+    setUrbLoading(true);setUrbError(null);
+    try{
+      const result=await lookupUrbanisme(ville,d.postal_code);
+      save({urbanisme_result:result});
+      if(result.email_urbanisme&&!d.mairie_email){save({mairie_email:result.email_urbanisme});}
+      toast("Recherche urbanisme terminée pour "+ville,"s");
+    }catch(err){setUrbError(err.message||"Erreur lors de la recherche");}
+    finally{setUrbLoading(false);}
   };
 
   // Résoudre l'email mairie : champ dédié → scan commentaires
@@ -823,7 +844,7 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
             <div>
-              {[["Email",d.email],["Telephone",d.phone],["Adresse",d.address,true],["N° DP",d.dp_number],["Parcelle",d.parcelle]].map(([l,v,full])=><div key={l} style={{marginBottom:12,...(full?{gridColumn:"1/-1"}:{})}}>
+              {[["Email",d.email],["Telephone",d.phone],["Adresse",d.address,true],["Ville",d.ville],["Code postal",d.postal_code],["N° DP",d.dp_number],["Parcelle",d.parcelle]].map(([l,v,full])=><div key={l} style={{marginBottom:12,...(full?{gridColumn:"1/-1"}:{})}}>
                 <div style={{fontSize:9,fontWeight:700,color:"var(--tx4)",textTransform:"uppercase",letterSpacing:".1em",marginBottom:3}}>{l}</div>
                 <div style={{fontSize:13,fontWeight:500,fontFamily:"var(--ff)"}}>{v||"—"}</div>
               </div>)}
@@ -902,7 +923,7 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
           />
         </div>}
 
-        {tab==="commentaires"&&<div style={{display:"grid",gridTemplateColumns:"1fr 270px",gap:20}}>
+        {tab==="commentaires"&&<div style={{display:"grid",gridTemplateColumns:"1fr 310px",gap:20}}>
           {/* ── Colonne gauche : commentaires ── */}
           <div>
             <div className="sec">Ajouter un commentaire</div>
@@ -922,8 +943,138 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
             {!(d.comments||[]).length&&<p style={{color:"var(--tx4)",fontSize:12,textAlign:"center",padding:18}}>Aucun commentaire</p>}
           </div>
 
-          {/* ── Colonne droite : Contact mairie ── */}
+          {/* ── Colonne droite : Contact mairie + Urbanisme AI ── */}
           <div>
+            {/* ── Recherche urbanisme — Annuaire Service Public ── */}
+            <div style={{background:"linear-gradient(135deg,#ede9fe,#e0e7ff)",border:"1.5px solid rgba(99,102,241,.3)",borderRadius:"var(--rl)",padding:14,marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:800,color:"#6366f1",textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>🏛 Recherche urbanisme</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 90px",gap:6,marginBottom:8}}>
+                <div className="fg">
+                  <label className="lbl">Ville du dossier</label>
+                  <input value={d.ville||""} onChange={e=>save({ville:e.target.value})} placeholder="Ex: Salon-de-Provence" style={{fontSize:12}}/>
+                </div>
+                <div className="fg">
+                  <label className="lbl">Code postal</label>
+                  <input value={d.postal_code||""} onChange={e=>save({postal_code:e.target.value})} placeholder="13300" style={{fontSize:12}}/>
+                </div>
+              </div>
+              <button className="btn btn-sm" disabled={urbLoading||!d.ville}
+                style={{background:"#6366f1",color:"#fff",border:"none",opacity:(urbLoading||!d.ville)?.5:1,width:"100%",justifyContent:"center",fontWeight:700}}
+                onClick={doUrbanismeLookup}>
+                {urbLoading?<><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Recherche en cours...</>:<>🔍 Rechercher mairie + communauté de communes</>}
+              </button>
+              {urbError&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"var(--r)",padding:"6px 10px",fontSize:11,color:"#b91c1c",marginTop:8}}>{urbError}</div>}
+
+              {/* Résultat annuaire + Google */}
+              {d.urbanisme_result&&<div style={{marginTop:10}}>
+
+                {/* ── Plateforme d'urbanisme (scan GNAU) ── */}
+                {d.urbanisme_result.plateforme_urbanisme&&d.urbanisme_result.plateforme_urbanisme.length>0&&<div style={{background:"#fefce8",border:"1.5px solid #fde047",borderRadius:"var(--r)",padding:10,marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"#a16207",textTransform:"uppercase"}}>🌐 Plateforme d'urbanisme trouvée</div>
+                    {d.urbanisme_result.gnau_source&&<span style={{fontSize:8,fontWeight:700,padding:"1px 5px",borderRadius:3,background:d.urbanisme_result.gnau_source==="ville"?"#dcfce7":"#e0e7ff",color:d.urbanisme_result.gnau_source==="ville"?"#059669":"#6366f1"}}>
+                      via {d.urbanisme_result.gnau_source}{d.urbanisme_result.gnau_interco?` (${d.urbanisme_result.gnau_interco})`:""}
+                    </span>}
+                  </div>
+                  {d.urbanisme_result.plateforme_urbanisme.map((p,i)=><div key={i} style={{marginBottom:i<d.urbanisme_result.plateforme_urbanisme.length-1?8:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:2}}>
+                      <span style={{background:"#a16207",color:"#fff",fontSize:8,fontWeight:800,padding:"1px 5px",borderRadius:3}}>{p.type||"Lien"}</span>
+                      {i===0&&<span style={{fontSize:8,color:"#059669",fontWeight:700}}>VÉRIFIÉ EN LIGNE</span>}
+                    </div>
+                    <a href={p.lien} target="_blank" rel="noopener noreferrer"
+                      style={{fontSize:12,fontWeight:700,color:"#a16207",wordBreak:"break-all",textDecoration:"underline",display:"block"}}>{p.lien}</a>
+                  </div>)}
+                </div>}
+
+                {d.urbanisme_result.plateforme_urbanisme&&d.urbanisme_result.plateforme_urbanisme.length===0&&<div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:"var(--r)",padding:"6px 10px",fontSize:11,color:"#b45309",marginBottom:8}}>
+                  Aucune plateforme d'urbanisme (GNAU/SVE/Geosphere...) détectée pour cette ville.
+                </div>}
+
+                {/* ── Mairie (fusionnée service-public.fr + Google Places) ── */}
+                {d.urbanisme_result.mairie&&<div style={{background:"#fff",border:"1.5px solid rgba(99,102,241,.2)",borderRadius:"var(--r)",padding:10,marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"#6366f1",textTransform:"uppercase"}}>{d.urbanisme_result.mairie.nom||"Mairie"}</div>
+                    {d.urbanisme_result.mairie.sources&&<div style={{display:"flex",gap:3}}>
+                      {d.urbanisme_result.mairie.sources.map((s,i)=><span key={i} style={{fontSize:7,fontWeight:700,padding:"1px 4px",borderRadius:3,background:s==="Google Maps"?"#e8f0fe":"#f0f0ff",color:s==="Google Maps"?"#1a73e8":"#6366f1"}}>{s}</span>)}
+                    </div>}
+                  </div>
+
+                  {d.urbanisme_result.mairie.email&&<div style={{marginBottom:5}}>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600}}>Email</div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1A4A8A",wordBreak:"break-all"}}>{d.urbanisme_result.mairie.email}</div>
+                  </div>}
+
+                  {d.urbanisme_result.mairie.telephone&&<div style={{marginBottom:5}}>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600}}>Téléphone</div>
+                    <div style={{fontSize:12,fontWeight:600}}>{d.urbanisme_result.mairie.telephone}</div>
+                  </div>}
+
+                  {d.urbanisme_result.mairie.adresse_complete&&<div style={{marginBottom:5}}>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600}}>Adresse</div>
+                    <div style={{fontSize:11}}>{d.urbanisme_result.mairie.adresse_complete}</div>
+                  </div>}
+
+                  {d.urbanisme_result.mairie.sve&&<div style={{marginBottom:5}}>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600}}>SVE (Saisine par Voie Électronique)</div>
+                    <a href={d.urbanisme_result.mairie.sve} target="_blank" rel="noopener noreferrer"
+                      style={{fontSize:11,color:"#6366f1",wordBreak:"break-all",textDecoration:"underline"}}>{d.urbanisme_result.mairie.sve}</a>
+                  </div>}
+
+                  {d.urbanisme_result.mairie.site_internet&&<div style={{marginBottom:5}}>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600}}>Site internet</div>
+                    <a href={d.urbanisme_result.mairie.site_internet.startsWith("http")?d.urbanisme_result.mairie.site_internet:"https://"+d.urbanisme_result.mairie.site_internet} target="_blank" rel="noopener noreferrer"
+                      style={{fontSize:11,color:"#6366f1",wordBreak:"break-all",textDecoration:"underline"}}>{d.urbanisme_result.mairie.site_internet}</a>
+                  </div>}
+
+                  {d.urbanisme_result.mairie.plage_ouverture&&d.urbanisme_result.mairie.plage_ouverture.length>0&&<div style={{marginBottom:5}}>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600,marginBottom:2}}>Horaires d'ouverture</div>
+                    {d.urbanisme_result.mairie.plage_ouverture.map((h,i)=><div key={i} style={{fontSize:10,color:"var(--tx3)",lineHeight:1.6}}>{h}</div>)}
+                  </div>}
+
+                  {d.urbanisme_result.mairie.google_maps&&<div>
+                    <a href={d.urbanisme_result.mairie.google_maps} target="_blank" rel="noopener noreferrer"
+                      style={{fontSize:10,color:"#1a73e8",textDecoration:"underline",fontWeight:600}}>📍 Voir sur Google Maps</a>
+                  </div>}
+                </div>}
+
+                {!d.urbanisme_result.mairie&&<div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:"var(--r)",padding:"6px 10px",fontSize:11,color:"#b45309",marginBottom:8}}>
+                  Aucune mairie trouvée pour « {d.urbanisme_result.ville} ». Vérifiez l'orthographe.
+                </div>}
+
+                {/* ── EPCI / Communauté de communes ── */}
+                {d.urbanisme_result.epci&&<div style={{background:"#f0fdf4",border:"1.5px solid #bbf7d0",borderRadius:"var(--r)",padding:10,marginBottom:8}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"#059669",textTransform:"uppercase",marginBottom:6}}>{d.urbanisme_result.epci.nom||"Communauté de communes"}</div>
+
+                  {d.urbanisme_result.epci.email&&<div style={{marginBottom:4}}>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600}}>Email</div>
+                    <div style={{fontSize:11,fontWeight:600,color:"#1A4A8A",wordBreak:"break-all"}}>{d.urbanisme_result.epci.email}</div>
+                  </div>}
+
+                  {d.urbanisme_result.epci.telephone&&<div style={{marginBottom:4}}>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600}}>Téléphone</div>
+                    <div style={{fontSize:11}}>{d.urbanisme_result.epci.telephone}</div>
+                  </div>}
+
+                  {d.urbanisme_result.epci.sve&&<div>
+                    <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600}}>SVE</div>
+                    <a href={d.urbanisme_result.epci.sve} target="_blank" rel="noopener noreferrer"
+                      style={{fontSize:11,color:"#059669",wordBreak:"break-all",textDecoration:"underline"}}>{d.urbanisme_result.epci.sve}</a>
+                  </div>}
+                </div>}
+
+                {/* Footer */}
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6,padding:"4px 0"}}>
+                  <span style={{fontSize:9,color:"#6366f1",fontWeight:600}}>Sources : service-public.fr + Google + scan GNAU</span>
+                  <span style={{fontSize:9,color:"var(--tx4)"}}>{d.urbanisme_result.date_recherche?new Date(d.urbanisme_result.date_recherche).toLocaleDateString("fr-FR"):""}</span>
+                </div>
+              </div>}
+
+              {!d.urbanisme_result&&!urbLoading&&<div style={{fontSize:11,color:"#6366f1",fontStyle:"italic",marginTop:8,textAlign:"center"}}>
+                Saisissez la ville puis cliquez pour lancer la recherche
+              </div>}
+            </div>
+
+            {/* ── Contact mairie (existant) ── */}
             <div style={{background:"var(--or-l)",border:"1.5px solid rgba(232,80,26,.25)",borderRadius:"var(--rl)",padding:14}}>
               <div style={{fontSize:11,fontWeight:800,color:"var(--or)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:12}}>⏰ Contact mairie</div>
 
@@ -1474,7 +1625,18 @@ function Import({setDossiers,toast}){
 function Profil({currentUser,users,setUsers,toast}){
   const u=users.find(x=>x.id===currentUser.id)||currentUser;
   const [name,setName]=useState(u.name);const [pwd,setPwd]=useState("");const avRef=useRef();
+  const [smtpPwd,setSmtpPwd]=useState("");const [smtpSaving,setSmtpSaving]=useState(false);
   const handleAv=file=>{if(!file)return;const r=new FileReader();r.onload=e=>{setUsers(p=>p.map(x=>x.id===currentUser.id?{...x,avatar:e.target.result}:x));toast("Photo mise a jour","s");};r.readAsDataURL(file);};
+  const saveSmtp=async()=>{
+    if(!smtpPwd.trim()){toast("Saisis ton mot de passe d'application","e");return;}
+    setSmtpSaving(true);
+    try{await updateUserSmtp(currentUser.id,smtpPwd);setUsers(p=>p.map(x=>x.id===currentUser.id?{...x,smtp_configured:1}:x));toast("SMTP configuré — les emails partiront de "+u.email,"s");setSmtpPwd("");}
+    catch(e){toast("Erreur: "+e.message,"e");}
+    finally{setSmtpSaving(false);}
+  };
+  const isGmail=(u.email||"").includes("@gmail.");
+  const isOutlook=/(@outlook\.|@hotmail\.|@live\.)/.test(u.email||"");
+  const smtpHelp=isGmail?"Google → Sécurité → Mots de passe d'application → Générer":isOutlook?"Microsoft → Sécurité → Mots de passe d'application → Créer":"Crée un mot de passe d'application depuis ton fournisseur email";
   return <div style={{maxWidth:460}}>
     <h2 style={{fontSize:19,fontWeight:800,marginBottom:18}}>Mon profil</h2>
     <div className="card" style={{marginBottom:12}}>
@@ -1489,9 +1651,26 @@ function Profil({currentUser,users,setUsers,toast}){
       <div className="fg" style={{marginBottom:11}}><label className="lbl">Nom</label><input value={name} onChange={e=>setName(e.target.value)}/></div>
       <button className="btn btn-p btn-sm" onClick={()=>{setUsers(p=>p.map(x=>x.id===currentUser.id?{...x,name}:x));toast("Nom mis a jour","s");}}><Ic n="check" s={11}/>Sauvegarder</button>
     </div>
-    <div className="card"><h3 style={{fontSize:12,fontWeight:700,marginBottom:12}}>Mot de passe</h3>
+    <div className="card" style={{marginBottom:12}}><h3 style={{fontSize:12,fontWeight:700,marginBottom:12}}>Mot de passe</h3>
       <div className="fg" style={{marginBottom:11}}><label className="lbl">Nouveau</label><input type="password" value={pwd} onChange={e=>setPwd(e.target.value)} placeholder="••••••••"/></div>
       <button className="btn btn-s btn-sm" onClick={()=>{setPwd("");toast("Mot de passe mis a jour","s");}}><Ic n="lock" s={11}/>Mettre a jour</button>
+    </div>
+    <div className="card" style={{border:u.smtp_configured?"2px solid #22c55e":"2px solid #f59e0b"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+        <Ic n="mail" s={14}/>
+        <h3 style={{fontSize:12,fontWeight:700,margin:0}}>Configuration email SMTP</h3>
+        {u.smtp_configured?<span style={{background:"#dcfce7",color:"#16a34a",padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700}}>Configuré</span>
+        :<span style={{background:"#fef3c7",color:"#b45309",padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700}}>Non configuré</span>}
+      </div>
+      <p style={{fontSize:11,color:"var(--tx3)",margin:"0 0 8px",lineHeight:1.5}}>
+        Les relances et emails partiront de <strong>{u.email}</strong>.<br/>
+        {smtpHelp}
+      </p>
+      <div className="fg" style={{marginBottom:11}}>
+        <label className="lbl">Mot de passe d'application</label>
+        <input type="password" value={smtpPwd} onChange={e=>setSmtpPwd(e.target.value)} placeholder={u.smtp_configured?"••••••••  (déjà configuré, re-saisir pour modifier)":"Colle ton mot de passe d'application ici"}/>
+      </div>
+      <button className="btn btn-p btn-sm" disabled={smtpSaving} onClick={saveSmtp}><Ic n="check" s={11}/>{smtpSaving?"Enregistrement...":"Enregistrer"}</button>
     </div>
   </div>;
 }
@@ -1734,7 +1913,7 @@ export default function App(){
               value={globalFilters.date_updated}
               onChange={e=>{setGlobalFilters(f=>({...f,date_updated:e.target.value}));if(e.target.value&&page!=="dossiers")setPage("dossiers");}}
               style={{width:120}}/>
-            {hasFilter&&<button className="btn btn-d btn-sm" onClick={()=>setGlobalFilters({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""})}><Ic n="x" s={11}/>Reset</button>}
+            {hasFilter&&<button className="btn btn-d btn-sm" onClick={()=>setGlobalFilters({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""})}><Ic n="x" s={11}/>Réinitialiser</button>}
           </div>}
 
           {!isClient&&<><input ref={topXlsRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])topImportXLS(e.target.files[0]);e.target.value="";}}/>

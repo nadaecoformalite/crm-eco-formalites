@@ -16,7 +16,7 @@ fs.mkdirSync(UPLOAD_ROOT, { recursive: true });
 // ── Document categories ───────────────────────────────────────────────────────
 
 const VALID_CATEGORIES = [
-  'kbis', 'devis', 'facture', 'dp', 'raccordement',
+  'kbis', 'devis', 'facture', 'dp', 'recepisse', 'raccordement',
   'consuel', 'tva', 'contrat', 'plan', 'photo', 'autre'
 ];
 
@@ -286,6 +286,36 @@ router.get('/file/*', (req, res) => {
     return res.status(404).json({ error: 'Fichier introuvable' });
   }
   res.sendFile(filePath);
+});
+
+// POST /api/documents/:id/save-edited — save an edited PDF (replaces file, bumps version)
+router.post('/:id/save-edited', express.raw({ type: 'application/pdf', limit: '50mb' }), (req, res) => {
+  req.db.get('SELECT * FROM documents WHERE id=?', [req.params.id], (err, doc) => {
+    if (err || !doc) return res.status(404).json({ error: 'Document introuvable' });
+
+    const pdfBuffer = req.body;
+    if (!pdfBuffer || pdfBuffer.length === 0) return res.status(400).json({ error: 'PDF vide' });
+
+    // Write the new file over the existing one
+    fs.writeFile(doc.storage_path, pdfBuffer, (writeErr) => {
+      if (writeErr) return res.status(500).json({ error: 'Erreur écriture: ' + writeErr.message });
+
+      const now = new Date().toISOString();
+      const newSize = pdfBuffer.length;
+      const sizeHuman = newSize > 1048576
+        ? (newSize / 1048576).toFixed(1) + ' MB'
+        : (newSize / 1024).toFixed(0) + ' KB';
+
+      req.db.run(
+        'UPDATE documents SET version = version + 1, size = ?, size_human = ?, updated = ? WHERE id = ?',
+        [newSize, sizeHuman, now, req.params.id],
+        function (dbErr) {
+          if (dbErr) return res.status(500).json({ error: dbErr.message });
+          res.json({ success: true, message: 'Document modifié et sauvegardé', version: doc.version + 1 });
+        }
+      );
+    });
+  });
 });
 
 module.exports = { router, UPLOAD_ROOT };

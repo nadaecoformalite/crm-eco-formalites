@@ -1,11 +1,78 @@
 const express = require('express');
 const router = express.Router();
-const { Resend } = require('resend');
+const nodemailer = require('nodemailer');
 const cron = require('node-cron');
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const FROM_EMAIL = process.env.FROM_EMAIL || 'no-reply@eco-formalites.fr';
-const FROM_NAME = process.env.FROM_NAME || 'Eco-Formalités';
+const SMTP_EMAIL = process.env.SMTP_EMAIL;
+const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.office365.com';
+const SMTP_PORT = parseInt(process.env.SMTP_PORT || '587', 10);
+const FROM_NAME = process.env.SMTP_FROM_NAME || 'Eco-Formalités';
+const FROM_EMAIL = SMTP_EMAIL;
+
+// ── Auto-détection SMTP selon le domaine email ─────────────────────────────
+const SMTP_PROVIDERS = {
+  'gmail.com':          { host: 'smtp.gmail.com',          port: 587 },
+  'googlemail.com':     { host: 'smtp.gmail.com',          port: 587 },
+  'outlook.com':        { host: 'smtp-mail.outlook.com',   port: 587 },
+  'outlook.fr':         { host: 'smtp-mail.outlook.com',   port: 587 },
+  'hotmail.com':        { host: 'smtp-mail.outlook.com',   port: 587 },
+  'hotmail.fr':         { host: 'smtp-mail.outlook.com',   port: 587 },
+  'live.com':           { host: 'smtp-mail.outlook.com',   port: 587 },
+  'live.fr':            { host: 'smtp-mail.outlook.com',   port: 587 },
+  'yahoo.com':          { host: 'smtp.mail.yahoo.com',     port: 587 },
+  'yahoo.fr':           { host: 'smtp.mail.yahoo.com',     port: 587 },
+};
+
+function getSmtpConfig(email) {
+  const domain = (email || '').split('@')[1]?.toLowerCase();
+  if (SMTP_PROVIDERS[domain]) return SMTP_PROVIDERS[domain];
+  // Domaine custom (ex: @eco-formalites.com) → Microsoft 365 par défaut
+  return { host: SMTP_HOST, port: SMTP_PORT };
+}
+
+// Cache des transporteurs par email (évite de recréer à chaque envoi)
+const transporterCache = {};
+
+function getTransporter(email, password) {
+  const key = email;
+  if (transporterCache[key]) return transporterCache[key];
+  const config = getSmtpConfig(email);
+  const t = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: false,
+    auth: { user: email, pass: password },
+    tls: { ciphers: 'SSLv3', rejectUnauthorized: false },
+  });
+  transporterCache[key] = t;
+  return t;
+}
+
+/**
+ * Envoie un email via SMTP.
+ * Détecte automatiquement le provider (Gmail, Outlook, Microsoft 365).
+ * Le mail apparaît dans les "Éléments envoyés" du compte automatiquement.
+ * @param {object} opts
+ * @param {string} opts.smtp_user   — email SMTP (optionnel, fallback .env)
+ * @param {string} opts.smtp_pass   — mot de passe SMTP (optionnel, fallback .env)
+ */
+async function sendViaSmtp({ smtp_user, smtp_pass, from_email, from_name, to, to_name, subject, html, text }) {
+  const user = smtp_user || FROM_EMAIL;
+  const pass = smtp_pass || SMTP_PASSWORD;
+  if (!user || !pass) throw new Error('SMTP non configuré — renseigne SMTP_EMAIL et SMTP_PASSWORD dans .env ou le mot de passe SMTP dans ton profil CRM');
+  const transporter = getTransporter(user, pass);
+  const fromAddr = from_email || user;
+  const fromLabel = from_name || FROM_NAME;
+  const result = await transporter.sendMail({
+    from: `${fromLabel} <${fromAddr}>`,
+    to: to_name ? `${to_name} <${to}>` : to,
+    subject,
+    html,
+    text: text || undefined,
+  });
+  return { id: result.messageId };
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -309,21 +376,28 @@ function startEmailCron(db) {
         if (err || !rows || rows.length === 0) return;
         for (const row of rows) {
           try {
-            const result = await resend.emails.send({
-              from: `${FROM_NAME} <${FROM_EMAIL}>`,
-              to: row.to_name ? `${row.to_name} <${row.to_email}>` : row.to_email,
-              subject: row.subject,
-              html: row.body_html,
-              text: row.body_text || undefined,
+            const senderEmail = row.from_email || FROM_EMAIL;
+            const senderName  = row.from_name  || FROM_NAME;
+            // Chercher le mot de passe SMTP de l'expéditeur dans la table users
+            const senderUser = await new Promise(res => {
+              if (!senderEmail) return res(null);
+              db.get('SELECT smtp_password FROM users WHERE email = ?', [senderEmail], (_, u) => res(u));
+            });
+            const result = await sendViaSmtp({
+              smtp_user: senderUser?.smtp_password ? senderEmail : undefined,
+              smtp_pass: senderUser?.smtp_password || undefined,
+              from_email: senderEmail, from_name: senderName,
+              to: row.to_email, to_name: row.to_name,
+              subject: row.subject, html: row.body_html, text: row.body_text,
             });
             db.run(
               `UPDATE email_queue SET status='sent', sent_at=?, resend_id=? WHERE id=?`,
-              [new Date().toISOString(), result.data?.id || null, row.id]
+              [new Date().toISOString(), result.id || null, row.id]
             );
             db.run(
               `INSERT INTO email_log (queue_id, dossier_id, to_email, subject, status, resend_id, sent_at)
                VALUES (?, ?, ?, ?, 'sent', ?, ?)`,
-              [row.id, row.dossier_id, row.to_email, row.subject, result.data?.id || null, new Date().toISOString()]
+              [row.id, row.dossier_id, row.to_email, row.subject, result.id || null, new Date().toISOString()]
             );
           } catch (sendErr) {
             const errMsg = sendErr.message || 'Unknown error';
@@ -342,6 +416,16 @@ function startEmailCron(db) {
     );
   });
   console.log('⏰ Cron email démarré (vérification chaque minute)');
+
+  // ── Helper : résoudre l'email de l'assignee (expéditeur) ──────────────────
+  function resolveAssigneeEmail(dossier) {
+    return new Promise(resolve => {
+      if (!dossier.assignee) return resolve(null);
+      db.get('SELECT email, name, smtp_password FROM users WHERE name = ?', [dossier.assignee], (err, user) => {
+        resolve(user || null);
+      });
+    });
+  }
 
   // ── Helper : résoudre l'email mairie (champ dédié → scan commentaires) ──
   function resolveMairieEmail(dossier) {
@@ -385,8 +469,13 @@ function startEmailCron(db) {
                 console.log(`[CRON] Relance J+6 ignorée — pas d'email mairie (dossier ${d.id})`);
                 continue;
               }
+              const assignee = await resolveAssigneeEmail(d);
+              const senderEmail = assignee?.email || FROM_EMAIL;
+              const senderName  = assignee?.name  || FROM_NAME;
               const vars = {
                 ...dossierVars(d),
+                company_email: senderEmail,
+                company_name:  senderName,
                 date_envoi_dp: d.date_envoi_dp
                   ? new Date(d.date_envoi_dp).toLocaleDateString('fr-FR') : '',
               };
@@ -394,13 +483,13 @@ function startEmailCron(db) {
               const bodyHtml = interpolate(tmpl.body_html, vars);
               const bodyText = interpolate(tmpl.body_text, vars);
               await new Promise(res => db.run(
-                `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-                [tmpl.id, d.id, toEmail, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now],
+                `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created, from_email, from_name)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+                [tmpl.id, d.id, toEmail, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now, senderEmail, senderName],
                 res
               ));
               db.run(`UPDATE dossiers SET relance_recepisee_at = ? WHERE id = ?`, [now, d.id]);
-              console.log(`[CRON] Relance J+6 enqueued → ${toEmail} (dossier ${d.id})`);
+              console.log(`[CRON] Relance J+6 enqueued → ${toEmail} from ${senderEmail} (dossier ${d.id})`);
             }
           }
         );
@@ -430,8 +519,13 @@ function startEmailCron(db) {
                 console.log(`[CRON] Relance J+30 ignorée — pas d'email mairie (dossier ${d.id})`);
                 continue;
               }
+              const assignee = await resolveAssigneeEmail(d);
+              const senderEmail = assignee?.email || FROM_EMAIL;
+              const senderName  = assignee?.name  || FROM_NAME;
               const vars = {
                 ...dossierVars(d),
+                company_email: senderEmail,
+                company_name:  senderName,
                 date_envoi_dp: d.date_envoi_dp
                   ? new Date(d.date_envoi_dp).toLocaleDateString('fr-FR') : '',
               };
@@ -439,13 +533,13 @@ function startEmailCron(db) {
               const bodyHtml = interpolate(tmpl.body_html, vars);
               const bodyText = interpolate(tmpl.body_text, vars);
               await new Promise(res => db.run(
-                `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-                [tmpl.id, d.id, toEmail, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now],
+                `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created, from_email, from_name)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+                [tmpl.id, d.id, toEmail, 'Service Urbanisme', subject, bodyHtml, bodyText, now, now, senderEmail, senderName],
                 res
               ));
               db.run(`UPDATE dossiers SET relance_accord_dp_at = ? WHERE id = ?`, [now, d.id]);
-              console.log(`[CRON] Relance J+30 enqueued → ${toEmail} (dossier ${d.id})`);
+              console.log(`[CRON] Relance J+30 enqueued → ${toEmail} from ${senderEmail} (dossier ${d.id})`);
             }
           }
         );
@@ -548,36 +642,45 @@ router.post('/preview', (req, res) => {
 router.post('/send', async (req, res) => {
   const {
     to, to_name, subject, body_html, body_text,
-    template_id, dossier_id, variables: extraVars = {}
+    template_id, dossier_id, variables: extraVars = {},
+    from_email: reqFromEmail, from_name: reqFromName
   } = req.body;
 
   if (!to) return res.status(400).json({ error: 'Destinataire (to) requis' });
 
+  const senderEmail = reqFromEmail || FROM_EMAIL;
+  const senderName  = reqFromName  || FROM_NAME;
+
+  // Chercher le mot de passe SMTP de l'expéditeur
+  const senderUser = await new Promise(resolve => {
+    if (!senderEmail) return resolve(null);
+    req.db.get('SELECT smtp_password FROM users WHERE email = ?', [senderEmail], (_, u) => resolve(u));
+  });
+
   const doSend = async (finalSubject, finalHtml, finalText) => {
     try {
-      const result = await resend.emails.send({
-        from: `${FROM_NAME} <${FROM_EMAIL}>`,
-        to: to_name ? `${to_name} <${to}>` : to,
-        subject: finalSubject,
-        html: finalHtml,
-        text: finalText || undefined,
+      const result = await sendViaSmtp({
+        smtp_user: senderUser?.smtp_password ? senderEmail : undefined,
+        smtp_pass: senderUser?.smtp_password || undefined,
+        from_email: senderEmail, from_name: senderName,
+        to, to_name, subject: finalSubject, html: finalHtml, text: finalText,
       });
 
       const now = new Date().toISOString();
       req.db.run(
-        `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, sent_at, status, resend_id, created)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?)`,
-        [template_id || null, dossier_id || null, to, to_name || null, finalSubject, finalHtml, finalText || '', now, now, result.data?.id || null, now]
+        `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, sent_at, status, resend_id, created, from_email, from_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sent', ?, ?, ?, ?)`,
+        [template_id || null, dossier_id || null, to, to_name || null, finalSubject, finalHtml, finalText || '', now, now, result.id || null, now, senderEmail, senderName]
       );
       req.db.run(
         `INSERT INTO email_log (dossier_id, to_email, subject, status, resend_id, sent_at)
          VALUES (?, ?, ?, 'sent', ?, ?)`,
-        [dossier_id || null, to, finalSubject, result.data?.id || null, now]
+        [dossier_id || null, to, finalSubject, result.id || null, now]
       );
 
-      res.json({ success: true, id: result.data?.id, message: 'Email envoyé' });
+      res.json({ success: true, id: result.id, message: 'Email envoyé' });
     } catch (err) {
-      const errMsg = err.message || 'Erreur Resend';
+      const errMsg = err.message || 'Erreur envoi email';
       req.db.run(
         `INSERT INTO email_log (dossier_id, to_email, subject, status, error, sent_at)
          VALUES (?, ?, ?, 'error', ?, ?)`,
@@ -619,17 +722,21 @@ router.post('/send', async (req, res) => {
 router.post('/schedule', (req, res) => {
   const {
     to, to_name, subject, body_html, body_text,
-    template_id, dossier_id, scheduled_at, variables: extraVars = {}
+    template_id, dossier_id, scheduled_at, variables: extraVars = {},
+    from_email: reqFromEmail, from_name: reqFromName
   } = req.body;
 
   if (!to || !scheduled_at) return res.status(400).json({ error: 'to et scheduled_at requis' });
 
+  const senderEmail = reqFromEmail || FROM_EMAIL;
+  const senderName  = reqFromName  || FROM_NAME;
+
   const doSchedule = (finalSubject, finalHtml, finalText) => {
     const now = new Date().toISOString();
     req.db.run(
-      `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-      [template_id || null, dossier_id || null, to, to_name || null, finalSubject, finalHtml, finalText || '', scheduled_at, now],
+      `INSERT INTO email_queue (template_id, dossier_id, to_email, to_name, subject, body_html, body_text, scheduled_at, status, created, from_email, from_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      [template_id || null, dossier_id || null, to, to_name || null, finalSubject, finalHtml, finalText || '', scheduled_at, now, senderEmail, senderName],
       function (err) {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ id: this.lastID, message: 'Email programmé', scheduled_at });
