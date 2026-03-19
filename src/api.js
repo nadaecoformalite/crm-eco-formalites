@@ -1,13 +1,41 @@
 // API Configuration
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
+// ── Token management ─────────────────────────────────────────────────────────
+
+export function getToken() {
+  return localStorage.getItem('auth_token');
+}
+
+export function setToken(token) {
+  if (token) localStorage.setItem('auth_token', token);
+  else localStorage.removeItem('auth_token');
+}
+
+export function logout() {
+  localStorage.removeItem('auth_token');
+  localStorage.removeItem('auth_user');
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
-  });
+  const token = getToken();
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const res = await fetch(`${API_URL}${path}`, { ...options, headers });
+
+  if (res.status === 401 && token) {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('auth_user');
+    window.location.reload();
+    throw new Error('Session expirée');
+  }
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error || `HTTP ${res.status}`);
@@ -47,8 +75,14 @@ export const deleteDossier = async (id) => {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 export const login = async (email, password) => {
-  try { return await request('/login', { method: 'POST', body: JSON.stringify({ email, password }) }); }
-  catch (err) { console.error('login:', err); return null; }
+  try {
+    const data = await request('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    if (data?.token) {
+      setToken(data.token);
+      localStorage.setItem('auth_user', JSON.stringify(data.user));
+    }
+    return data?.user || data;
+  } catch (err) { console.error('login:', err); return null; }
 };
 
 export const getUsers = async () => {
@@ -93,8 +127,10 @@ export const uploadDocuments = async (dossierId, files, category = 'autre', extr
   formData.append('category', category);
   if (extractedData) formData.append('extracted_data', JSON.stringify(extractedData));
 
+  const token = getToken();
   const res = await fetch(`${API_URL}/documents/upload/${encodeURIComponent(dossierId)}`, {
     method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
     body: formData,
   });
   if (!res.ok) {
@@ -115,10 +151,13 @@ export const updateDocument = async (id, data) => {
 };
 
 export const saveEditedDocument = async (docId, pdfBytes) => {
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+  const token = getToken();
   const res = await fetch(`${API_URL}/documents/${docId}/save-edited`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/pdf' },
+    headers: {
+      'Content-Type': 'application/pdf',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     body: pdfBytes,
   });
   if (!res.ok) {

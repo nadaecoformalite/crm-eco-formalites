@@ -1,15 +1,54 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcryptjs');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const { authMiddleware, generateToken } = require('./middleware/auth');
 const { router: emailRouter, seedTemplates, startEmailCron } = require('./routes/emails');
 const { router: documentsRouter, UPLOAD_ROOT } = require('./routes/documents');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+// ── Security headers ─────────────────────────────────────────────────────────
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false,
+}));
+
+// ── CORS restreint ───────────────────────────────────────────────────────────
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://localhost:3001').split(',');
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    callback(new Error('CORS non autorisé'));
+  },
+  credentials: true,
+}));
+
+// ── Rate limiting ────────────────────────────────────────────────────────────
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Trop de tentatives de connexion. Réessayez dans 15 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 200,
+  message: { error: 'Trop de requêtes. Ralentissez.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/login', loginLimiter);
+
 app.use(express.json({ limit: '10mb' }));
 
 // ── Static uploads (serve physical files) ────────────────────────────────────
@@ -180,6 +219,9 @@ db.serialize(() => {
 
 app.use((req, _res, next) => { req.db = db; next(); });
 
+// ── Auth middleware — protège toutes les routes /api/* sauf login/health/share ─
+app.use(authMiddleware);
+
 // ── Email routes ──────────────────────────────────────────────────────────────
 
 app.use('/api/emails', emailRouter);
@@ -288,14 +330,54 @@ app.get('/api/users', (req, res) => {
   });
 });
 
-app.post('/api/login', (req, res) => {
+app.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
-  // NOTE: In production, replace plain-text comparison with bcrypt.compare()
-  db.get('SELECT * FROM users WHERE email=? AND password=?', [email, password], (err, row) => {
+  if (!email || !password) return res.status(400).json({ error: 'Email et mot de passe requis' });
+
+  db.get('SELECT * FROM users WHERE email=?', [email], async (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!row) return res.status(401).json({ error: 'Identifiants invalides' });
-    res.json({ id: row.id, name: row.name, email: row.email, role: row.role, initials: row.initials, smtp_configured: !!(row.smtp_password) });
+
+    let passwordValid = false;
+    if (row.password.startsWith('$2a$') || row.password.startsWith('$2b$')) {
+      passwordValid = await bcrypt.compare(password, row.password);
+    } else {
+      passwordValid = (row.password === password);
+      if (passwordValid) {
+        const hashed = await bcrypt.hash(password, 12);
+        db.run('UPDATE users SET password=? WHERE id=?', [hashed, row.id]);
+      }
+    }
+
+    if (!passwordValid) return res.status(401).json({ error: 'Identifiants invalides' });
+
+    const token = generateToken(row);
+    res.json({
+      token,
+      user: { id: row.id, name: row.name, email: row.email, role: row.role, initials: row.initials, smtp_configured: !!(row.smtp_password) },
+    });
   });
+});
+
+app.post('/api/register', async (req, res) => {
+  const { name, email, password, role, initials } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Nom, email et mot de passe requis' });
+
+  const hashed = await bcrypt.hash(password, 12);
+  const now = new Date().toISOString();
+  db.run(
+    'INSERT INTO users (name, email, password, role, initials, created) VALUES (?,?,?,?,?,?)',
+    [name, email, hashed, role || 'employee', initials || name.slice(0, 2).toUpperCase(), now],
+    function (err) {
+      if (err) {
+        if (err.message.includes('UNIQUE')) return res.status(409).json({ error: 'Cet email est déjà utilisé' });
+        return res.status(500).json({ error: err.message });
+      }
+      const user = { id: this.lastID, name, email, role: role || 'employee' };
+      const token = generateToken(user);
+      res.json({ token, user });
+    }
+  );
 });
 
 // PUT /api/users/:id/smtp — configurer le mot de passe SMTP d'un utilisateur
