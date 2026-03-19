@@ -399,7 +399,7 @@ const ANNUAIRE_FIELDS = 'nom,pivot,adresse_courriel,adresse,plage_ouverture,site
 
 // ── Mots-clés HTML pour détecter une vraie page GNAU/urbanisme ──────────────
 const KEYWORDS_HTML = [
-  'gnau','guichet numerique des autorisations d urbanisme',
+  'gnau','guichet numerique des autorisations d urbanisme', 
   "guichet numérique des autorisations d'urbanisme",
   'operis','geosphere','geopermis','e-permis','sve sirap',"ide'au",'ideau',
   "autorisation d urbanisme","autorisation d'urbanisme",'urbanisme',
@@ -407,8 +407,8 @@ const KEYWORDS_HTML = [
   'permis de construire en ligne','demande d autorisation',
   'communaute de communes','communauté de communes',
   "communaute d agglomeration","communauté d'agglomération",
-  'metropole','métropole','service urbanisme',
-  'demarches en ligne urbanisme','teleprocedure urbanisme',
+  'metropole','métropole','service urbanisme', 'OpenADS' , 'Next ADS',
+  'demarches en ligne urbanisme','teleprocedure urbanisme', 'Cart@DS',
   'téléprocédure urbanisme', 'ingenieriere70', 'sirap', 'atip67', 'oci-urbanisme', 'xdemat', 'xurba', 'ads', 'ideau',
 ];
 
@@ -422,10 +422,12 @@ const GNAU_PATTERNS = [
   'https://{slug}.geosphere.fr/gnau',
   'https://cartads.{slug}.fr/guichet-unique',
   'https://cartads.{slug}.fr/gnau',
-  // SIRAP
+  'https://gnau.cartads.fr/{slug}',
+  // SIRAP Next’ADS
   'https://portail-usager.sirap.fr/{slug}',
   'https://portail-usager.sirap.com/{slug}',
   'https://portail-usager.sirap.com/recherche-commune',
+  'https://sve.sirap.fr',
   // GEO PERMIS / E-PERMIS
   'https://www.geopermis.fr/{slug}',
   'https://www.e-permis.fr/{slug}',
@@ -451,6 +453,7 @@ const GNAU_PATTERNS = [
   'https://www.{slug}.fr/guichet-unique',
   'https://{slug}.fr/urbanisme',
   'https://www.{slug}.fr/urbanisme',
+
 ];
 
 const EXTRA_PATHS = ['gnau','gnau/#/','guichet-unique','guichet-unique/Accueil','urbanisme','ads','ads/gnau'];
