@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PWA Install — Prototype Eco-CRM</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{--or:#E8501A;--or-l:#FEF0EB;--bg:#F5F5F0;--bg2:#ffffff;--bd:#E8E8E0;--tx:#1A1A16;--tx2:#3D3D35;--tx3:#6B6B60;--tx4:#A0A090;--ff:'DM Sans',sans-serif;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:var(--ff);background:var(--bg);min-height:100vh;display:flex;flex-direction:column;align-items:center;}
+
+/* Header simulation */
+.header{width:100%;background:var(--bg2);border-bottom:1px solid var(--bd);padding:14px 24px;display:flex;align-items:center;gap:12px;}
+.header-logo{width:36px;height:36px;border-radius:10px;background:var(--or);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:11px;}
+.header-title{font-weight:700;font-size:16px;color:var(--tx);}
+.header-right{margin-left:auto;display:flex;gap:10px;align-items:center;}
+.header-dot{width:30px;height:30px;border-radius:50%;background:var(--or-l);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--or);}
+
+/* Fake content */
+.content{max-width:900px;width:100%;padding:24px;flex:1;}
+.card{background:var(--bg2);border-radius:14px;border:1px solid var(--bd);padding:20px;margin-bottom:16px;}
+.card-title{font-weight:700;font-size:14px;color:var(--or);margin-bottom:10px;}
+.row{display:flex;gap:16px;flex-wrap:wrap;}
+.stat{flex:1;min-width:140px;background:var(--bg);border-radius:10px;padding:14px;text-align:center;}
+.stat-num{font-size:28px;font-weight:800;color:var(--or);}
+.stat-label{font-size:11px;color:var(--tx3);margin-top:4px;}
+.table-row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--bd);}
+.table-row:last-child{border-bottom:none;}
+.dp-badge{background:var(--or-l);color:var(--or);padding:2px 8px;border-radius:6px;font-weight:600;font-size:12px;font-family:monospace;}
+.status-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;}
+
+/* Install banner */
+.install-banner{position:fixed;bottom:0;left:0;right:0;z-index:99999;background:var(--bg2);border-top:3px solid var(--or);box-shadow:0 -4px 20px rgba(0,0,0,.15);padding:16px 20px;display:flex;align-items:center;gap:14;font-family:var(--ff);animation:slideUp .5s ease;}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+.install-icon{width:44px;height:44px;border-radius:12px;background:var(--or);display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:14px;}
+.install-text{flex:1;}
+.install-title{font-weight:700;font-size:14px;color:var(--tx);margin-bottom:2px;}
+.install-desc{font-size:12px;color:var(--tx3);}
+.install-btn{padding:8px 18px;background:var(--or);color:#fff;border:none;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;font-family:var(--ff);white-space:nowrap;margin-left:10px;transition:background .2s;}
+.install-btn:hover{background:#c43e10;}
+.install-close{background:none;border:none;cursor:pointer;font-size:18px;color:var(--tx4);padding:4px;margin-left:8px;}
+
+/* Switcher */
+.demo-switch{position:fixed;top:70px;right:16px;z-index:100000;display:flex;flex-direction:column;gap:6px;}
+.demo-switch button{padding:8px 14px;border-radius:8px;border:2px solid var(--or);background:var(--bg2);color:var(--or);font-weight:600;font-size:12px;cursor:pointer;font-family:var(--ff);transition:.2s;}
+.demo-switch button.active{background:var(--or);color:#fff;}
+.demo-switch button:hover{opacity:.85;}
+
+/* Mobile frame */
+.mobile-note{position:fixed;top:70px;left:16px;background:var(--or-l);border:1px solid var(--or);border-radius:10px;padding:10px 14px;font-size:11px;color:var(--or);font-weight:600;max-width:220px;z-index:100000;line-height:1.4;}
+
+/* Responsive sim */
+@media(max-width:500px){
+  .stat-num{font-size:22px;}
+  .card{padding:14px;}
+  .content{padding:14px;}
+}
+</style>
+</head>
+<body>
+
+<!-- Simulated CRM header -->
+<div class="header">
+  <div class="header-logo">ECO</div>
+  <div class="header-title">Eco-formalités</div>
+  <div class="header-right">
+    <div class="header-dot">NS</div>
+  </div>
+</div>
+
+<!-- Simulated CRM content -->
+<div class="content">
+  <div class="card">
+    <div class="card-title">Tableau de bord</div>
+    <div class="row">
+      <div class="stat"><div class="stat-num">47</div><div class="stat-label">Dossiers actifs</div></div>
+      <div class="stat"><div class="stat-num">12</div><div class="stat-label">En attente</div></div>
+      <div class="stat"><div class="stat-num">8</div><div class="stat-label">Accordés</div></div>
+      <div class="stat"><div class="stat-num">3</div><div class="stat-label">Urgents</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Derniers dossiers</div>
+    <div class="table-row">
+      <span class="dp-badge">DP-2024-0147</span>
+      <span style="flex:1;font-size:13px;">Martin Dupont — Panneaux Solaires</span>
+      <span class="status-badge" style="background:#ecfdf5;color:#059669;">Accord Mairie</span>
+    </div>
+    <div class="table-row">
+      <span class="dp-badge">DP-2024-0146</span>
+      <span style="flex:1;font-size:13px;">Sophie Leroy — ITE</span>
+      <span class="status-badge" style="background:var(--or-l);color:var(--or);">En cours</span>
+    </div>
+    <div class="table-row">
+      <span class="dp-badge">DP-2024-0145</span>
+      <span style="flex:1;font-size:13px;">Pierre Bernard — PAC</span>
+      <span class="status-badge" style="background:#fffbeb;color:#d97706;">En attente</span>
+    </div>
+    <div class="table-row">
+      <span class="dp-badge">DP-2024-0144</span>
+      <span style="flex:1;font-size:13px;">Claire Moreau — Pergola</span>
+      <span class="status-badge" style="background:#ecfdf5;color:#059669;">Accord Mairie</span>
+    </div>
+  </div>
+  <div style="height:80px;"></div>
+</div>
+
+<!-- Install banner — Desktop version -->
+<div class="install-banner" id="banner-desktop">
+  <div class="install-icon">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L12 15M12 15L8 11M12 15L16 11" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17V19C4 20.1 4.9 21 6 21H18C19.1 21 20 20.1 20 19V17" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="install-text">
+    <div class="install-title" id="banner-title">Installer Eco-CRM sur votre ordinateur</div>
+    <div class="install-desc" id="banner-desc">Accédez à l'app en un clic, même hors connexion</div>
+  </div>
+  <button class="install-btn" id="btn-install">Installer</button>
+  <button class="install-close" onclick="closeBanner()">✕</button>
+</div>
+
+<!-- Demo controls -->
+<div class="demo-switch">
+  <button class="active" id="sw-desktop" onclick="switchMode('desktop')">💻 Ordinateur</button>
+  <button id="sw-android" onclick="switchMode('android')">📱 Android</button>
+  <button id="sw-ios" onclick="switchMode('ios')">🍎 iPhone</button>
+</div>
+
+<div class="mobile-note" id="note">
+  ⬇️ Regarde en bas : la bannière d'installation apparaît automatiquement quand l'utilisateur visite le site
+</div>
+
+<script>
+function switchMode(mode) {
+  document.querySelectorAll('.demo-switch button').forEach(b => b.classList.remove('active'));
+  document.getElementById('sw-' + mode).classList.add('active');
+
+  const title = document.getElementById('banner-title');
+  const desc = document.getElementById('banner-desc');
+  const btn = document.getElementById('btn-install');
+  const banner = document.getElementById('banner-desktop');
+
+  banner.style.display = 'flex';
+  banner.style.animation = 'none';
+  banner.offsetHeight; // reflow
+  banner.style.animation = 'slideUp .5s ease';
+
+  if (mode === 'desktop') {
+    title.textContent = 'Installer Eco-CRM sur votre ordinateur';
+    desc.textContent = "Accédez à l'app en un clic, même hors connexion";
+    btn.style.display = '';
+  } else if (mode === 'android') {
+    title.textContent = 'Installer Eco-CRM sur votre téléphone';
+    desc.textContent = "Accédez à l'app en un clic, même hors connexion";
+    btn.style.display = '';
+  } else if (mode === 'ios') {
+    title.textContent = 'Installer Eco-CRM sur votre iPhone';
+    desc.innerHTML = 'Appuyez sur <strong>Partager</strong> <span style="font-size:16px">⎋</span> puis <strong>"Sur l\'écran d\'accueil"</strong>';
+    btn.style.display = 'none';
+  }
+}
+
+function closeBanner() {
+  document.getElementById('banner-desktop').style.display = 'none';
+}
+
+// Simulate install click
+document.getElementById('btn-install').addEventListener('click', function() {
+  this.textContent = '✓ Installé !';
+  this.style.background = '#059669';
+  setTimeout(() => {
+    document.getElementById('banner-desktop').style.display = 'none';
+    setTimeout(() => {
+      this.textContent = 'Installer';
+      this.style.background = '';
+      document.getElementById('banner-desktop').style.display = 'flex';
+    }, 2000);
+  }, 1500);
+});
+</script>
+</body>
+</html>

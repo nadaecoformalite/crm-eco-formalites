@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="152" height="152" viewBox="0 0 152 152">
+  <rect width="152" height="152" rx="22.8" fill="#E8501A"/>
+  <circle cx="76" cy="68.4" r="42.56" fill="#fff"/>
+  <path d="M54.72,81.168 Q71.744,42.864000000000004 97.28,51.376000000000005 Q84.512,72.656 54.72,81.168" fill="#E8501A"/>
+  <path d="M63.232,76.912 Q76,64.144 93.024,53.504000000000005" fill="none" stroke="#fff" stroke-width="1.824"/>
+  <text x="76" y="129.2" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-weight="bold" font-size="27.36">ECO</text>
+</svg>
