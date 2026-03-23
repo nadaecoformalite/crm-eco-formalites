@@ -20,7 +20,7 @@ app.use(helmet({
 }));
 
 // ── CORS restreint ───────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://localhost:3001').split(',');
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:5174,http://localhost:3000,http://localhost:3001').split(',');
 app.use(cors({
   origin(origin, callback) {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
