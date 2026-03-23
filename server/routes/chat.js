@@ -22,8 +22,8 @@ router.get('/unread-count', (req, res) => {
   });
 });
 
-// GET /api/chat — list conversations (with last message info + unread count)
-router.get('/', (req, res) => {
+// GET /api/chat/conversations — list conversations (with last message info + unread count)
+router.get('/conversations', (req, res) => {
   const { user_id, dossier_id } = req.query;
   const conditions = [];
   const params = [];
@@ -81,15 +81,15 @@ router.get('/', (req, res) => {
   });
 });
 
-// POST /api/chat — create conversation
-router.post('/', (req, res) => {
-  const { title, dossier_id, type, participant_ids, created_by } = req.body;
+// POST /api/chat/conversations — create conversation
+router.post('/conversations', (req, res) => {
+  const { title, dossier_id, type, scope, participant_ids, created_by } = req.body;
   const now = new Date().toISOString();
 
   req.db.run(
-    `INSERT INTO chat_conversations (title, dossier_id, type, created_by, created, updated)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [title || null, dossier_id || null, type || 'general', created_by, now, now],
+    `INSERT INTO chat_conversations (title, dossier_id, type, scope, created_by, created, updated)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [title || null, dossier_id || null, type || 'general', scope || 'interne', created_by, now, now],
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
       const convId = this.lastID;
@@ -124,8 +124,8 @@ router.post('/', (req, res) => {
   );
 });
 
-// DELETE /api/chat/:id — delete conversation + cascade
-router.delete('/:id', (req, res) => {
+// DELETE /api/chat/conversations/:id — delete conversation + cascade
+router.delete('/conversations/:id', (req, res) => {
   const convId = req.params.id;
 
   req.db.run('DELETE FROM chat_messages WHERE conversation_id = ?', [convId], (err) => {
@@ -142,8 +142,8 @@ router.delete('/:id', (req, res) => {
   });
 });
 
-// GET /api/chat/:id/messages — get messages
-router.get('/:id/messages', (req, res) => {
+// GET /api/chat/conversations/:id/messages — get messages
+router.get('/conversations/:id/messages', (req, res) => {
   const convId = req.params.id;
   const limit = parseInt(req.query.limit) || 50;
   const afterId = req.query.after_id;
@@ -165,8 +165,8 @@ router.get('/:id/messages', (req, res) => {
   });
 });
 
-// POST /api/chat/:id/messages — send message
-router.post('/:id/messages', (req, res) => {
+// POST /api/chat/conversations/:id/messages — send message
+router.post('/conversations/:id/messages', (req, res) => {
   const convId = req.params.id;
   const { sender_id, content, type, audio_data, audio_duration } = req.body;
   const now = new Date().toISOString();
@@ -197,8 +197,8 @@ router.post('/:id/messages', (req, res) => {
   );
 });
 
-// PUT /api/chat/:id/read — mark messages as read
-router.put('/:id/read', (req, res) => {
+// PUT /api/chat/conversations/:id/read — mark messages as read
+router.put('/conversations/:id/read', (req, res) => {
   const convId = req.params.id;
   const { user_id } = req.body;
   if (!user_id) return res.status(400).json({ error: 'user_id requis' });

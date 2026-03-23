@@ -9,6 +9,7 @@ const path = require('path');
 const { authMiddleware, generateToken } = require('./middleware/auth');
 const { router: emailRouter, seedTemplates, startEmailCron } = require('./routes/emails');
 const { router: documentsRouter, UPLOAD_ROOT } = require('./routes/documents');
+const { router: chatRouter } = require('./routes/chat');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -184,6 +185,42 @@ db.serialize(() => {
     setTimeout(() => seedTemplates(db), 500);
   });
 
+  // --- Chat tables ---
+  db.run(`CREATE TABLE IF NOT EXISTS chat_conversations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT,
+    dossier_id TEXT,
+    type TEXT DEFAULT 'general',
+    scope TEXT DEFAULT 'interne',
+    created_by INTEGER,
+    created TEXT,
+    updated TEXT,
+    FOREIGN KEY(dossier_id) REFERENCES dossiers(id)
+  )`, err => { if (err) console.error('chat_conversations table:', err); else console.log('✅ chat_conversations table OK'); });
+
+  db.run(`CREATE TABLE IF NOT EXISTS chat_participants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER,
+    user_id INTEGER,
+    joined TEXT,
+    FOREIGN KEY(conversation_id) REFERENCES chat_conversations(id),
+    FOREIGN KEY(user_id) REFERENCES users(id)
+  )`, err => { if (err) console.error('chat_participants table:', err); else console.log('✅ chat_participants table OK'); });
+
+  db.run(`CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    conversation_id INTEGER,
+    sender_id INTEGER,
+    content TEXT,
+    type TEXT DEFAULT 'text',
+    audio_data TEXT,
+    audio_duration REAL,
+    read_by TEXT DEFAULT '[]',
+    created TEXT,
+    FOREIGN KEY(conversation_id) REFERENCES chat_conversations(id),
+    FOREIGN KEY(sender_id) REFERENCES users(id)
+  )`, err => { if (err) console.error('chat_messages table:', err); else console.log('✅ chat_messages table OK'); });
+
   // ── Migrations : colonnes de suivi DP ──────────────────────────────────────
   // SQLite ignore silencieusement si la colonne existe déjà (IF NOT EXISTS non supporté
   // pour ADD COLUMN avant SQLite 3.37, donc on tente et on absorbe l'erreur)
@@ -205,6 +242,8 @@ db.serialize(() => {
     `ALTER TABLE email_queue ADD COLUMN from_name TEXT`,
     // ── Users : config SMTP par utilisateur ──
     `ALTER TABLE users ADD COLUMN smtp_password TEXT`,
+    // ── Chat : scope interne/externe ──
+    `ALTER TABLE chat_conversations ADD COLUMN scope TEXT DEFAULT 'interne'`,
   ];
   migrations.forEach(sql => {
     db.run(sql, err => {
@@ -229,6 +268,10 @@ app.use('/api/emails', emailRouter);
 // ── Document routes (GED) ─────────────────────────────────────────────────────
 
 app.use('/api/documents', documentsRouter);
+
+// ── Chat routes ─────────────────────────────────────────────────────────────
+
+app.use('/api/chat', chatRouter);
 
 // ── Dossiers ──────────────────────────────────────────────────────────────────
 

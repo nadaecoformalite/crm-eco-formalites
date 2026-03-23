@@ -3,6 +3,7 @@ import * as pdfjsLib from "pdfjs-dist";
 import Tesseract from "tesseract.js";
 import EmailModule from "./EmailModule.jsx";
 import GEDModule, { DOC_CATEGORIES } from "./GEDModule.jsx";
+import ChatBubble, { openChatForDossier } from "./ChatModule.jsx";
 import { lookupUrbanisme, updateUserSmtp, login as apiLogin, logout as apiLogout, getToken } from "./api.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -317,6 +318,7 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--or);cursor:pointe
 .lpg{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#141412;position:relative;overflow:hidden;}
 .lpg::before{content:"";position:absolute;width:500px;height:500px;background:radial-gradient(circle,rgba(232,80,26,.2) 0%,transparent 70%);top:-80px;right:-80px;}
 .lcard{background:var(--bg2);border-radius:18px;padding:38px 34px;width:100%;max-width:400px;box-shadow:var(--shl);position:relative;z-index:1;}
+@media(max-width:768px){.login-left-panel{display:none!important;}.login-mobile-logo{display:block!important;}}
 /* MISC */
 .sec{font-size:11px;font-weight:800;color:var(--tx2);text-transform:uppercase;letter-spacing:.09em;margin-bottom:10px;padding-bottom:6px;border-bottom:2px solid var(--bd);}
 .conf-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:center;justify-content:center;}
@@ -381,26 +383,119 @@ function Confirm({msg,onOk,onNo}){
 
 // ── LOGIN ──
 function Login({onLogin}){
-  const [em,setEm]=useState("");const [pw,setPw]=useState("");const [err,setErr]=useState("");const [loading,setLoading]=useState(false);
+  const [em,setEm]=useState("");const [pw,setPw]=useState("");const [err,setErr]=useState("");const [loading,setLoading]=useState(false);const [showPw,setShowPw]=useState(false);
   const go=async()=>{
+    if(!em.trim()||!pw.trim()){setErr("Veuillez remplir tous les champs.");return;}
     setErr("");setLoading(true);
     try{
       const u=await apiLogin(em,pw);
       if(u)onLogin(u);
-      else setErr("Identifiants incorrects.");
+      else setErr("Email ou mot de passe incorrect.");
     }catch(e){setErr(e.message||"Erreur de connexion.");}
     finally{setLoading(false);}
   };
-  return <div className="lpg"><div className="lcard">
-    <div style={{textAlign:"center",marginBottom:26}}><img src={LOGO_SRC} alt="Eco Formalites" style={{height:42,objectFit:"contain",marginBottom:14}}/><p style={{color:"var(--tx3)",fontSize:12}}>Espace de gestion des dossiers</p></div>
-    {err&&<div style={{background:"var(--re-l)",border:"1px solid #fbb",borderRadius:"var(--r)",padding:9,color:"var(--re)",fontSize:12,marginBottom:11}}>{err}</div>}
-    <div style={{display:"flex",flexDirection:"column",gap:11}}>
-      <div className="fg"><label className="lbl">Email</label><input type="email" value={em} onChange={e=>setEm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="votre@email.fr"/></div>
-      <div className="fg"><label className="lbl">Mot de passe</label><input type="password" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="••••••••"/></div>
-      <button className="btn btn-p" style={{width:"100%",justifyContent:"center",padding:10,marginTop:4}} onClick={go} disabled={loading}><Ic n="lock" s={13}/>{loading?"Connexion...":"Se connecter"}</button>
+  return <div style={{minHeight:'100vh',display:'flex',background:'#0E0E0D',fontFamily:"'DM Sans',sans-serif",overflow:'hidden',position:'relative'}}>
+    {/* Animated background shapes */}
+    <div style={{position:'absolute',top:'-15%',right:'-10%',width:'600px',height:'600px',borderRadius:'50%',background:'radial-gradient(circle,rgba(232,80,26,.12) 0%,transparent 70%)',animation:'pulse1 8s ease-in-out infinite'}}/>
+    <div style={{position:'absolute',bottom:'-20%',left:'-8%',width:'500px',height:'500px',borderRadius:'50%',background:'radial-gradient(circle,rgba(232,80,26,.08) 0%,transparent 70%)',animation:'pulse2 10s ease-in-out infinite'}}/>
+    <div style={{position:'absolute',top:'40%',left:'30%',width:'300px',height:'300px',borderRadius:'50%',background:'radial-gradient(circle,rgba(232,80,26,.05) 0%,transparent 70%)',animation:'pulse1 12s ease-in-out infinite'}}/>
+    <style>{`@keyframes pulse1{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.15);opacity:1}}@keyframes pulse2{0%,100%{transform:scale(1.1);opacity:.6}50%{transform:scale(.9);opacity:1}}@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}`}</style>
+
+    {/* Left panel — branding (hidden on mobile) */}
+    <div style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'center',padding:'60px 50px',position:'relative',zIndex:1,minHeight:'100vh'}}>
+      <div style={{animation:'fadeUp .8s ease',maxWidth:480}}>
+        <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:40}}>
+          <div style={{width:52,height:52,borderRadius:14,background:'#E8501A',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 8px 30px rgba(232,80,26,.35)'}}>
+            <span style={{color:'#fff',fontWeight:800,fontSize:16}}>ECO</span>
+          </div>
+          <div>
+            <div style={{color:'#fff',fontSize:22,fontWeight:800,letterSpacing:'-.3px'}}>Eco-formalités</div>
+            <div style={{color:'rgba(255,255,255,.4)',fontSize:12,fontWeight:500}}>Plateforme de gestion CRM</div>
+          </div>
+        </div>
+        <h1 style={{color:'#fff',fontSize:36,fontWeight:800,lineHeight:1.2,marginBottom:16,letterSpacing:'-.5px'}}>Gérez vos dossiers<br/><span style={{color:'#E8501A'}}>énergétiques</span> simplement</h1>
+        <p style={{color:'rgba(255,255,255,.45)',fontSize:15,lineHeight:1.7,maxWidth:400}}>Demandes préalables, raccordements, CONSUEL, récupération de TVA — tout centralisé dans un seul outil.</p>
+        <div style={{display:'flex',gap:24,marginTop:40}}>
+          {[{n:'250+',l:'Dossiers traités'},{n:'98%',l:'Taux de réussite'},{n:'24/7',l:'Accès sécurisé'}].map((s,i)=>
+            <div key={i} style={{animation:`fadeUp ${.8+i*.15}s ease`}}>
+              <div style={{color:'#E8501A',fontSize:28,fontWeight:800}}>{s.n}</div>
+              <div style={{color:'rgba(255,255,255,.35)',fontSize:11,fontWeight:500,marginTop:2}}>{s.l}</div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
-    <div style={{marginTop:14,padding:11,background:"var(--bg3)",borderRadius:"var(--r)",fontSize:11,color:"var(--tx3)",lineHeight:1.9,border:"1px solid var(--bd)"}}><strong style={{color:"var(--tx2)"}}>Demo :</strong><br/>superadmin@crm.fr / admin2024<br/>admin@crm.fr / admin123</div>
-  </div></div>;
+
+    {/* Right panel — login form */}
+    <div style={{width:'100%',maxWidth:480,display:'flex',alignItems:'center',justifyContent:'center',padding:'40px 20px',position:'relative',zIndex:2}}>
+      <div style={{width:'100%',maxWidth:380,animation:'fadeUp .6s ease'}}>
+        {/* Mobile logo (shown only on small screens) */}
+        <div className="login-mobile-logo" style={{display:'none',textAlign:'center',marginBottom:30}}>
+          <div style={{width:48,height:48,borderRadius:13,background:'#E8501A',display:'inline-flex',alignItems:'center',justifyContent:'center',boxShadow:'0 6px 24px rgba(232,80,26,.35)',marginBottom:10}}>
+            <span style={{color:'#fff',fontWeight:800,fontSize:14}}>ECO</span>
+          </div>
+          <div style={{color:'#fff',fontSize:18,fontWeight:800}}>Eco-formalités</div>
+        </div>
+        <style>{`@media(max-width:768px){.login-mobile-logo{display:block!important}.login-left-panel{display:none!important}}`}</style>
+
+        <div style={{background:'rgba(255,255,255,.04)',backdropFilter:'blur(20px)',border:'1px solid rgba(255,255,255,.08)',borderRadius:20,padding:'36px 30px',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
+          <div style={{marginBottom:28}}>
+            <h2 style={{color:'#fff',fontSize:22,fontWeight:800,marginBottom:6}}>Connexion</h2>
+            <p style={{color:'rgba(255,255,255,.4)',fontSize:13}}>Accédez à votre espace de travail</p>
+          </div>
+
+          {err&&<div style={{background:'rgba(200,38,14,.12)',border:'1px solid rgba(200,38,14,.3)',borderRadius:10,padding:'10px 14px',color:'#ff6b5a',fontSize:13,marginBottom:16,display:'flex',alignItems:'center',gap:8}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="#ff6b5a" strokeWidth="2"/><path d="M12 8v4M12 16h.01" stroke="#ff6b5a" strokeWidth="2" strokeLinecap="round"/></svg>
+            {err}
+          </div>}
+
+          <div style={{display:'flex',flexDirection:'column',gap:16}}>
+            <div>
+              <label style={{display:'block',fontSize:11,fontWeight:700,color:'rgba(255,255,255,.5)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Adresse email</label>
+              <div style={{position:'relative'}}>
+                <svg style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',opacity:.35}} width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="2" y="4" width="20" height="16" rx="3" stroke="#fff" strokeWidth="1.8"/><path d="M2 7l10 6 10-6" stroke="#fff" strokeWidth="1.8"/></svg>
+                <input type="email" value={em} onChange={e=>setEm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="votre@email.fr"
+                  style={{width:'100%',padding:'12px 14px 12px 40px',background:'rgba(255,255,255,.06)',border:'1.5px solid rgba(255,255,255,.1)',borderRadius:10,color:'#fff',fontSize:14,fontFamily:"'DM Sans',sans-serif",outline:'none',transition:'.2s'}}
+                  onFocus={e=>e.target.style.borderColor='#E8501A'} onBlur={e=>e.target.style.borderColor='rgba(255,255,255,.1)'}/>
+              </div>
+            </div>
+            <div>
+              <label style={{display:'block',fontSize:11,fontWeight:700,color:'rgba(255,255,255,.5)',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>Mot de passe</label>
+              <div style={{position:'relative'}}>
+                <svg style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',opacity:.35}} width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="10" rx="2" stroke="#fff" strokeWidth="1.8"/><path d="M8 11V7a4 4 0 118 0v4" stroke="#fff" strokeWidth="1.8"/></svg>
+                <input type={showPw?"text":"password"} value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="••••••••"
+                  style={{width:'100%',padding:'12px 42px 12px 40px',background:'rgba(255,255,255,.06)',border:'1.5px solid rgba(255,255,255,.1)',borderRadius:10,color:'#fff',fontSize:14,fontFamily:"'DM Sans',sans-serif",outline:'none',transition:'.2s'}}
+                  onFocus={e=>e.target.style.borderColor='#E8501A'} onBlur={e=>e.target.style.borderColor='rgba(255,255,255,.1)'}/>
+                <button onClick={()=>setShowPw(!showPw)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',padding:4,opacity:.4,color:'#fff'}} tabIndex={-1} type="button">
+                  {showPw
+                    ?<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"/><line x1="1" y1="1" x2="23" y2="23" stroke="#fff" strokeWidth="1.8"/></svg>
+                    :<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke="#fff" strokeWidth="1.8"/><circle cx="12" cy="12" r="3" stroke="#fff" strokeWidth="1.8"/></svg>
+                  }
+                </button>
+              </div>
+            </div>
+            <button onClick={go} disabled={loading}
+              style={{width:'100%',padding:'13px 20px',background:loading?'#c43e10':'#E8501A',color:'#fff',border:'none',borderRadius:10,fontSize:14,fontWeight:700,cursor:loading?'wait':'pointer',fontFamily:"'DM Sans',sans-serif",display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginTop:4,transition:'background .2s',boxShadow:'0 4px 20px rgba(232,80,26,.35)'}}>
+              {loading
+                ?<><svg width="18" height="18" viewBox="0 0 24 24" style={{animation:'spin 1s linear infinite'}}><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.3)" strokeWidth="3" fill="none"/><path d="M12 2a10 10 0 019.8 8" stroke="#fff" strokeWidth="3" fill="none" strokeLinecap="round"/></svg><style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>Connexion en cours...</>
+                :<>Se connecter<svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></>
+              }
+            </button>
+          </div>
+        </div>
+
+        <div style={{marginTop:20,padding:'14px 18px',background:'rgba(255,255,255,.03)',border:'1px solid rgba(255,255,255,.06)',borderRadius:12,fontSize:12,color:'rgba(255,255,255,.35)',lineHeight:1.8}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="rgba(255,255,255,.4)" strokeWidth="1.5"/><path d="M12 8v4M12 16h.01" stroke="rgba(255,255,255,.4)" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            <strong style={{color:'rgba(255,255,255,.55)'}}>Comptes démo</strong>
+          </div>
+          superadmin@crm.fr / admin2024<br/>admin@crm.fr / admin123
+        </div>
+
+        <p style={{textAlign:'center',marginTop:20,fontSize:11,color:'rgba(255,255,255,.2)'}}>© 2024 Eco-formalités — Tous droits réservés</p>
+      </div>
+    </div>
+  </div>;
 }
 
 // ── AVANCEMENT COMPONENT ──
@@ -827,6 +922,7 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
           </button>}
           {isAssignedToMe&&<span style={{background:"#ecfdf5",border:"1.5px solid #a7f3d0",color:"#059669",padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>✓ Mon dossier</span>}
           <button className="btn btn-s btn-sm" onClick={()=>setEditing(true)}><Ic n="edit" s={11}/>Modifier</button>
+          <button className="btn btn-s btn-sm" onClick={()=>openChatForDossier(d)} title="Ouvrir le chat pour ce dossier"><Ic n="msg" s={11}/>Chat</button>
           <button className="bic" onClick={onClose}><Ic n="x"/></button>
         </div>
       </div>
@@ -1440,6 +1536,7 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
               {isSA&&<td><span style={{color:d.paid?"var(--gr)":"var(--tx4)",fontSize:11,fontWeight:600}}>{d.paid?"✓ Paye":"—"}</span></td>}
               <td onClick={e=>e.stopPropagation()}><div style={{display:"flex",gap:4}}>
                 <button className="bic" onClick={()=>setSel(d)}><Ic n="eye" s={11}/></button>
+                <button className="bic" onClick={()=>openChatForDossier(d)} title="Ouvrir le chat"><Ic n="msg" s={11}/></button>
                 {isSA&&<button className="bic" style={{color:"var(--re)"}} onClick={()=>setConfirm(d)}><Ic n="trash" s={11}/></button>}
               </div></td>
             </tr>)}
@@ -1776,6 +1873,25 @@ function NotifPanel({notifs,onClose,onClear}){
 }
 
 // ── APP ROOT ──
+function InstallBanner({installEvt,isIos,onClose}){
+  const doInstall=async()=>{if(installEvt){installEvt.prompt();const r=await installEvt.userChoice;if(r.outcome==='accepted')onClose();}};
+  const isMobile=/android|iphone|ipad|ipod|mobile/i.test(navigator.userAgent);
+  return <div style={{position:'fixed',bottom:0,left:0,right:0,zIndex:99999,background:'var(--bg2)',borderTop:'3px solid var(--or)',boxShadow:'0 -4px 20px rgba(0,0,0,.15)',padding:'16px 20px',display:'flex',alignItems:'center',gap:14,fontFamily:'var(--ff)'}}>
+    <div style={{width:44,height:44,borderRadius:12,background:'var(--or)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M12 2L12 15M12 15L8 11M12 15L16 11" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M4 17V19C4 20.1 4.9 21 6 21H18C19.1 21 20 20.1 20 19V17" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+    </div>
+    <div style={{flex:1}}>
+      <div style={{fontWeight:700,fontSize:14,color:'var(--tx)',marginBottom:2}}>Installer Eco-CRM {isMobile?'sur votre téléphone':'sur votre ordinateur'}</div>
+      {isIos
+        ?<div style={{fontSize:12,color:'var(--tx3)'}}>Appuyez sur <strong>Partager</strong> <span style={{fontSize:16}}>⎋</span> puis <strong>"Sur l'écran d'accueil"</strong></div>
+        :<div style={{fontSize:12,color:'var(--tx3)'}}>Accédez à l'app en un clic, même hors connexion</div>
+      }
+    </div>
+    {!isIos&&<button onClick={doInstall} style={{padding:'8px 18px',background:'var(--or)',color:'#fff',border:'none',borderRadius:8,fontWeight:600,fontSize:13,cursor:'pointer',fontFamily:'var(--ff)',whiteSpace:'nowrap'}}>Installer</button>}
+    <button onClick={onClose} style={{background:'none',border:'none',cursor:'pointer',fontSize:18,color:'var(--tx4)',padding:4}} title="Fermer">✕</button>
+  </div>;
+}
+
 export default function App(){
   const [user,setUser]=useState(()=>{try{const token=getToken();const saved=localStorage.getItem('auth_user');if(token&&saved)return JSON.parse(saved);}catch{}return null;});
   const [users,setUsers]=useState(INIT_USERS);
@@ -1789,6 +1905,21 @@ export default function App(){
   const [globalQ,setGlobalQ]=useState("");
   const [globalFilters,setGlobalFilters]=useState({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""});
   const [clientsOrg,setClientsOrg]=useState(INIT_CLIENTS_ORG);
+  const [installEvt,setInstallEvt]=useState(null);
+  const [showInstallBanner,setShowInstallBanner]=useState(false);
+  const [isIos,setIsIos]=useState(false);
+  const [isStandalone,setIsStandalone]=useState(false);
+
+  useEffect(()=>{
+    const standalone=window.matchMedia('(display-mode: standalone)').matches||window.navigator.standalone;
+    setIsStandalone(!!standalone);
+    const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)&&!window.MSStream;
+    setIsIos(ios);
+    if(ios&&!standalone){setTimeout(()=>setShowInstallBanner(true),3000);}
+    const handler=(e)=>{e.preventDefault();setInstallEvt(e);setShowInstallBanner(true);};
+    window.addEventListener('beforeinstallprompt',handler);
+    return ()=>window.removeEventListener('beforeinstallprompt',handler);
+  },[]);
 
   const toggleDark=()=>setDark(d=>{const next=!d;document.documentElement.setAttribute("data-theme",next?"dark":"light");return next;});
   const toast=(msg,type="i")=>{const id=Date.now()+Math.random();setToasts(t=>[...t,{id,msg,type}]);setTimeout(()=>setToasts(t=>t.filter(x=>x.id!==id)),4000);};
@@ -1947,5 +2078,7 @@ export default function App(){
       </div>
     </div>
     <Toasts ts={toasts} rm={rmToast}/>
+    <ChatBubble currentUser={user} dossiers={dossiers} users={users}/>
+    {showInstallBanner&&!isStandalone&&<InstallBanner installEvt={installEvt} isIos={isIos} onClose={()=>{setShowInstallBanner(false);setInstallEvt(null);}}/>}
   </>;
 }

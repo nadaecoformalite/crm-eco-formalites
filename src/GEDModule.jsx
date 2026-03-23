@@ -5,6 +5,7 @@ import {
   getDocuments, uploadDocuments, deleteDocument,
   updateDocument, getDocumentVersions, applyExtractedData,
 } from "./api.js";
+import PDFEditor from "./PDFEditor.jsx";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url
@@ -567,7 +568,8 @@ function DropZone({ dossierId, category, onUploaded, onExtracted }) {
 
 // ── Document row ──────────────────────────────────────────────────────────────
 
-function DocRow({ doc, onPreview, onDelete, onVersions, onRename }) {
+function DocRow({ doc, onPreview, onEdit, onDelete, onVersions, onRename }) {
+  const isPdf = (doc.mime_type || '').includes('pdf') || (doc.original_name || doc.name || '').toLowerCase().endsWith('.pdf');
   const cat = catMap[doc.category] || catMap.autre;
 
   return (
@@ -604,6 +606,8 @@ function DocRow({ doc, onPreview, onDelete, onVersions, onRename }) {
       <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
         <button className="bic" title="Aperçu" onClick={() => onPreview(doc)}
           style={{ width: 28, height: 28, fontSize: 12 }}>👁</button>
+        {isPdf && <button className="bic" title="Éditer le PDF (signature, annotations...)" onClick={() => onEdit(doc)}
+          style={{ width: 28, height: 28, fontSize: 12, color: 'var(--or)' }}>✏️</button>}
         <a href={`${API_BASE}${doc.url}`} download={doc.original_name || doc.name}
           className="bic" title="Télécharger" onClick={e => e.stopPropagation()}
           style={{ width: 28, height: 28, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⬇</a>
@@ -629,6 +633,7 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
   const [category, setCategory] = useState('all');
   const [selectedDossier, setSelectedDossier] = useState(dossierId || '');
   const [previewing, setPreviewing] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [versioning, setVersioning] = useState(null);
   const [extractedBanner, setExtractedBanner] = useState(null); // { data, dossierId }
   const [search, setSearch] = useState('');
@@ -853,6 +858,7 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
               {docs.map(doc => (
                 <DocRow key={doc.id} doc={doc}
                   onPreview={setPreviewing}
+                  onEdit={setEditing}
                   onDelete={handleDelete}
                   onVersions={setVersioning}
                   onRename={() => {}} />
@@ -865,6 +871,7 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
         filteredDocs.map(doc => (
           <DocRow key={doc.id} doc={doc}
             onPreview={setPreviewing}
+            onEdit={setEditing}
             onDelete={handleDelete}
             onVersions={setVersioning}
             onRename={() => {}} />
@@ -888,6 +895,7 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
 
       {/* Modals */}
       {previewing && <PDFPreview doc={previewing} onClose={() => setPreviewing(null)} />}
+      {editing && <PDFEditor doc={editing} onClose={() => setEditing(null)} onSaveVersion={() => { setEditing(null); reload(); showToast('Version sauvegardée'); }} />}
       {versioning && <VersionsModal docId={versioning.id} onClose={() => setVersioning(null)} />}
 
       {/* Toast */}

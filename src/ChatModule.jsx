@@ -333,7 +333,7 @@ function Avatar({ name, size = 30 }) {
 
 // ── MessageThread ──────────────────────────────────────────────────────────────
 
-function MessageThread({ conversation, currentUser, users, onBack, expanded, setExpanded, onClose }) {
+function MessageThread({ conversation, currentUser, users, dossiers, onBack, expanded, setExpanded, onClose }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -447,16 +447,27 @@ function MessageThread({ conversation, currentUser, users, onBack, expanded, set
           onMouseLeave={e => e.currentTarget.style.background = 'none'}>
           <Ic.Back />
         </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--tx)', overflow: 'hidden',
-            textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conversation.title}</div>
-          {conversation.dossier_id && (
-            <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--bl)', background: '#EEF3FD',
-              padding: '1px 7px', borderRadius: 10, display: 'inline-block', marginTop: 1 }}>
-              Dossier #{conversation.dossier_id}
-            </span>
-          )}
-        </div>
+        {(() => {
+          const dos = conversation.dossier_id ? (dossiers || []).find(d => String(d.id) === String(conversation.dossier_id)) : null;
+          return <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--or)', overflow: 'hidden',
+              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conversation.title}</div>
+            {dos && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2, flexWrap: 'wrap' }}>
+                {dos.dp_number && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--bl)', background: 'var(--bl-l)',
+                  padding: '1px 6px', borderRadius: 8 }}>{dos.dp_number}</span>}
+                {dos.client && <span style={{ fontSize: 11, color: 'var(--tx2)', fontWeight: 500 }}>{dos.client}</span>}
+                {dos.client_org && <span style={{ fontSize: 10, color: 'var(--tx4)' }}>({dos.client_org})</span>}
+              </div>
+            )}
+            {conversation.dossier_id && !dos && (
+              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--bl)', background: 'var(--bl-l)',
+                padding: '1px 7px', borderRadius: 10, display: 'inline-block', marginTop: 1 }}>
+                Dossier #{conversation.dossier_id}
+              </span>
+            )}
+          </div>;
+        })()}
         {setExpanded && <button onClick={() => setExpanded(e => !e)} title={expanded ? 'Réduire' : 'Agrandir'}
           style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4,
             display: 'flex', color: 'var(--tx3)', borderRadius: 6, transition: 'background 0.15s' }}
@@ -557,37 +568,43 @@ function MessageThread({ conversation, currentUser, users, onBack, expanded, set
   );
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function dossierLabel(d) {
+  return [d.dp_number, d.client, d.client_org].filter(Boolean).join(' — ') || d.reference || `Dossier #${d.id}`;
+}
+
 // ── NewConversationForm ────────────────────────────────────────────────────────
 
 function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel, initialDossier }) {
-  const autoTitle = initialDossier ? [initialDossier.client, initialDossier.client_org, initialDossier.dp_number].filter(Boolean).join(' — ') || initialDossier.reference || `Dossier #${initialDossier.id}` : '';
-  const [title, setTitle] = useState(autoTitle || '');
-  const [type, setType] = useState(initialDossier ? 'dossier' : 'general');
   const [dossierId, setDossierId] = useState(initialDossier ? String(initialDossier.id) : '');
-  const [dossierSearch, setDossierSearch] = useState(initialDossier ? (initialDossier.reference || initialDossier.client || `Dossier #${initialDossier.id}`) : '');
+  const [dossierSearch, setDossierSearch] = useState(initialDossier ? dossierLabel(initialDossier) : '');
   const [dossierDropOpen, setDossierDropOpen] = useState(false);
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const dossierSearchRef = useRef(null);
+  const selectedDossier = dossierId ? (dossiers || []).find(dd => String(dd.id) === String(dossierId)) : null;
 
   const toggleUser = id => {
     setSelectedUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
   const handleCreate = async () => {
-    if (!title.trim()) { setError('Le titre est requis'); return; }
+    if (!dossierId) { setError('Sélectionnez un dossier'); return; }
     if (selectedUsers.length === 0) { setError('Sélectionnez au moins un participant'); return; }
     setError('');
     setCreating(true);
+    const autoTitle = selectedDossier ? dossierLabel(selectedDossier) : `Dossier #${dossierId}`;
     try {
       const body = {
-        title: title.trim(),
-        type,
+        title: autoTitle,
+        type: 'dossier',
+        scope: 'interne',
         participant_ids: [...selectedUsers, currentUser.id],
         created_by: currentUser.id,
+        dossier_id: Number(dossierId),
       };
-      if (type === 'dossier' && dossierId) body.dossier_id = Number(dossierId);
       const res = await fetch(`${API_URL}/chat/conversations`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -607,96 +624,95 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
 
   const otherUsers = (users || []).filter(u => String(u.id) !== String(currentUser.id));
 
+  const q = dossierSearch.toLowerCase();
+  const filteredDossiers = (dossiers || []).filter(dd => {
+    const searchable = [dd.dp_number, dd.client, dd.client_org, dd.reference, dd.title, `Dossier #${dd.id}`]
+      .filter(Boolean).join(' ').toLowerCase();
+    return searchable.includes(q);
+  });
+
   return (
     <div style={{ position: 'absolute', inset: 0, background: 'var(--bg2)', zIndex: 5,
       display: 'flex', flexDirection: 'column', animation: 'chat-fade-in 0.2s ease' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '12px 14px', borderBottom: '1.5px solid var(--bd)', flexShrink: 0 }}>
-        <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--tx)' }}>Nouvelle conversation</span>
+        <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--or)' }}>Nouvelle conversation</span>
         <button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer',
-          padding: 4, color: 'var(--tx3)', display: 'flex' }}>
+          padding: 4, color: 'var(--tx3)', display: 'flex', borderRadius: 6, transition: 'background 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
           <Ic.X />
         </button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
-        {/* Title */}
-        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx2)', display: 'block', marginBottom: 4 }}>
-          Titre
+        {/* Dossier search — en haut */}
+        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--or)', display: 'block', marginBottom: 4 }}>
+          Dossier
         </label>
-        <input value={title} onChange={e => setTitle(e.target.value)} placeholder="Ex: Suivi dossier Dupont"
-          style={{ width: '100%', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)', padding: '8px 12px',
-            fontSize: 13, fontFamily: 'var(--ff)', outline: 'none', background: 'var(--bg3)',
-            color: 'var(--tx)', marginBottom: 14, boxSizing: 'border-box', transition: 'border-color 0.15s' }}
-          onFocus={e => e.target.style.borderColor = 'var(--or)'}
-          onBlur={e => e.target.style.borderColor = 'var(--bd)'}/>
-
-        {/* Type toggle */}
-        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx2)', display: 'block', marginBottom: 6 }}>
-          Type
-        </label>
-        <div style={{ display: 'flex', gap: 0, marginBottom: 14, borderRadius: 'var(--r)',
-          border: '1.5px solid var(--bd)', overflow: 'hidden' }}>
-          {[['general', 'Général'], ['dossier', 'Dossier']].map(([v, l]) => (
-            <button key={v} onClick={() => setType(v)} style={{
-              flex: 1, padding: '7px 0', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-              fontFamily: 'var(--ff)',
-              background: type === v ? 'var(--or)' : 'var(--bg2)',
-              color: type === v ? '#fff' : 'var(--tx2)',
-              transition: 'background 0.15s, color 0.15s',
-            }}>{l}</button>
-          ))}
-        </div>
-
-        {/* Dossier selector — recherche texte */}
-        {type === 'dossier' && (() => {
-          const q = dossierSearch.toLowerCase();
-          const filtered = (dossiers || []).filter(dd => {
-            const label = (dd.reference || dd.title || dd.client || `Dossier #${dd.id}`).toLowerCase();
-            return label.includes(q);
-          });
-          return <>
-            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx2)', display: 'block', marginBottom: 4 }}>
-              Dossier
-            </label>
-            <div style={{ position: 'relative', marginBottom: 14 }}>
-              <input ref={dossierSearchRef} value={dossierSearch}
-                onChange={e => { setDossierSearch(e.target.value); setDossierId(''); setDossierDropOpen(true); }}
-                onFocus={() => setDossierDropOpen(true)}
-                onBlur={() => setTimeout(() => setDossierDropOpen(false), 150)}
-                placeholder="Rechercher un dossier..."
-                style={{ width: '100%', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)',
-                  padding: '8px 12px', fontSize: 13, fontFamily: 'var(--ff)', outline: 'none',
-                  background: 'var(--bg3)', color: 'var(--tx)', boxSizing: 'border-box',
-                  transition: 'border-color 0.15s' }}
-              />
-              {dossierDropOpen && filtered.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
-                  background: 'var(--bg2)', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)',
-                  maxHeight: 160, overflowY: 'auto', boxShadow: 'var(--shl)', marginTop: 2 }}>
-                  {filtered.slice(0, 20).map(dd => {
-                    const label = dd.reference || dd.title || `Dossier #${dd.id}`;
-                    return <div key={dd.id} onClick={() => {
-                      setDossierId(String(dd.id));
-                      setDossierSearch(label + (dd.client ? ` — ${dd.client}` : ''));
-                      setDossierDropOpen(false);
-                    }} style={{ padding: '7px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--tx)',
-                      transition: 'background 0.1s' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--or-l)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                      <span style={{ fontWeight: 600 }}>{label}</span>
-                      {dd.client && <span style={{ color: 'var(--tx3)', marginLeft: 6 }}>— {dd.client}</span>}
-                    </div>;
-                  })}
+        <div style={{ position: 'relative', marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1.5px solid var(--bd)',
+            borderRadius: 'var(--r)', padding: '6px 12px', background: 'var(--bg3)',
+            transition: 'border-color 0.15s' }}>
+            <Ic.Search />
+            <input ref={dossierSearchRef} value={dossierSearch}
+              onChange={e => { setDossierSearch(e.target.value); setDossierId(''); setDossierDropOpen(true); }}
+              onFocus={() => setDossierDropOpen(true)}
+              onBlur={() => setTimeout(() => setDossierDropOpen(false), 150)}
+              placeholder="N° DP, nom client, partenaire..."
+              style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                fontSize: 13, fontFamily: 'var(--ff)', color: 'var(--tx)' }}
+            />
+          </div>
+          {dossierDropOpen && filteredDossiers.length > 0 && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+              background: 'var(--bg2)', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)',
+              maxHeight: 180, overflowY: 'auto', boxShadow: 'var(--shl)', marginTop: 2 }}>
+              {filteredDossiers.slice(0, 20).map(dd => (
+                <div key={dd.id} onClick={() => {
+                  setDossierId(String(dd.id));
+                  setDossierSearch(dossierLabel(dd));
+                  setDossierDropOpen(false);
+                }} style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--tx)',
+                  transition: 'background 0.1s', display: 'flex', alignItems: 'center', gap: 6 }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--or-l)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  {dd.dp_number && <span style={{ fontWeight: 700, color: 'var(--or)', fontSize: 11,
+                    background: 'var(--or-l)', padding: '1px 6px', borderRadius: 6, flexShrink: 0 }}>{dd.dp_number}</span>}
+                  <span style={{ fontWeight: 600 }}>{dd.client || `Dossier #${dd.id}`}</span>
+                  {dd.client_org && <span style={{ color: 'var(--tx3)', fontSize: 12 }}>({dd.client_org})</span>}
                 </div>
-              )}
+              ))}
             </div>
-          </>;
-        })()}
+          )}
+        </div>
+        {/* Selected dossier badge */}
+        {selectedDossier && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 14,
+            background: 'var(--or-l)', borderRadius: 'var(--r)', border: '1.5px solid var(--or)' }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--or)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+            </svg>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--or)', overflow: 'hidden',
+                textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedDossier.client}</div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 1 }}>
+                {selectedDossier.dp_number && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--or)',
+                  background: 'var(--or-l)', padding: '1px 6px', borderRadius: 6 }}>{selectedDossier.dp_number}</span>}
+                {selectedDossier.client_org && <span style={{ fontSize: 11, color: 'var(--tx3)' }}>{selectedDossier.client_org}</span>}
+              </div>
+            </div>
+            <button onClick={() => { setDossierId(''); setDossierSearch(''); }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                color: 'var(--tx3)', display: 'flex', borderRadius: 4 }}>
+              <Ic.X />
+            </button>
+          </div>
+        )}
 
         {/* Participants */}
-        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx2)', display: 'block', marginBottom: 6 }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--or)', display: 'block', marginBottom: 6 }}>
           Participants
         </label>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -721,8 +737,8 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
         </div>
 
         {error && (
-          <div style={{ marginTop: 12, padding: '6px 10px', borderRadius: 8, background: '#fef2f2',
-            color: '#C8260E', fontSize: 12, fontWeight: 600 }}>{error}</div>
+          <div style={{ marginTop: 12, padding: '6px 10px', borderRadius: 8, background: 'var(--re-l)',
+            color: 'var(--re)', fontSize: 12, fontWeight: 600 }}>{error}</div>
         )}
       </div>
 
@@ -744,7 +760,7 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
 
 // ── ConversationList ───────────────────────────────────────────────────────────
 
-function ConversationList({ currentUser, users, onSelect, onDelete }) {
+function ConversationList({ currentUser, users, dossiers, onSelect, onDelete }) {
   const [conversations, setConversations] = useState([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -776,9 +792,16 @@ function ConversationList({ currentUser, users, onSelect, onDelete }) {
     } catch { /* ignore */ }
   };
 
-  const filtered = conversations.filter(c =>
-    c.title?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = conversations.filter(c => {
+    const q = search.toLowerCase();
+    if (c.title?.toLowerCase().includes(q)) return true;
+    const dos = c.dossier_id ? (dossiers || []).find(d => String(d.id) === String(c.dossier_id)) : null;
+    if (dos) {
+      const searchable = [dos.dp_number, dos.client, dos.client_org].filter(Boolean).join(' ').toLowerCase();
+      if (searchable.includes(q)) return true;
+    }
+    return false;
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -810,7 +833,9 @@ function ConversationList({ currentUser, users, onSelect, onDelete }) {
             </div>
           </div>
         )}
-        {filtered.map(conv => (
+        {filtered.map(conv => {
+          const dos = conv.dossier_id ? (dossiers || []).find(d => String(d.id) === String(conv.dossier_id)) : null;
+          return (
           <div key={conv.id} onClick={() => onSelect(conv)}
             style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
               cursor: 'pointer', transition: 'background 0.12s', borderBottom: '1px solid var(--bd)' }}
@@ -819,8 +844,8 @@ function ConversationList({ currentUser, users, onSelect, onDelete }) {
             {/* Type icon */}
             <div style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center',
               justifyContent: 'center', fontSize: 18, flexShrink: 0,
-              background: conv.type === 'dossier' ? '#EEF3FD' : 'var(--or-l)' }}>
-              {conv.type === 'dossier' ? '📁' : '💬'}
+              background: 'var(--or-l)' }}>
+              {'📁'}
             </div>
             {/* Info */}
             <div style={{ flex: 1, minWidth: 0 }}>
@@ -831,6 +856,15 @@ function ConversationList({ currentUser, users, onSelect, onDelete }) {
                   {timeAgo(conv.last_message_time)}
                 </span>
               </div>
+              {/* Dossier info line: DP, client, partenaire */}
+              {dos && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
+                  {dos.dp_number && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--or)', background: 'var(--or-l)',
+                    padding: '1px 6px', borderRadius: 8 }}>{dos.dp_number}</span>}
+                  {dos.client && <span style={{ fontSize: 11, color: 'var(--tx2)', fontWeight: 500 }}>{dos.client}</span>}
+                  {dos.client_org && <span style={{ fontSize: 10, color: 'var(--tx4)' }}>({dos.client_org})</span>}
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
                 marginTop: 2 }}>
                 <span style={{ fontSize: 12, color: 'var(--tx3)', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -845,10 +879,19 @@ function ConversationList({ currentUser, users, onSelect, onDelete }) {
                       {conv.unread_count}
                     </span>
                   )}
+                  <button onClick={e => { e.stopPropagation(); onSelect(conv); }} title="Ouvrir le chat"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                      color: 'var(--tx4)', display: 'flex', borderRadius: 4, transition: 'color 0.15s' }}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--or)'}
+                    onMouseLeave={e => e.currentTarget.style.color = 'var(--tx4)'}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                  </button>
                   <button onClick={e => handleDelete(e, conv)} title="Supprimer"
                     style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
                       color: 'var(--tx4)', display: 'flex', borderRadius: 4, transition: 'color 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#C8260E'}
+                    onMouseEnter={e => e.currentTarget.style.color = 'var(--re)'}
                     onMouseLeave={e => e.currentTarget.style.color = 'var(--tx4)'}>
                     <Ic.Trash />
                   </button>
@@ -856,7 +899,8 @@ function ConversationList({ currentUser, users, onSelect, onDelete }) {
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
@@ -937,11 +981,11 @@ function ChatPanel({ currentUser, dossiers, users, onClose, initialDossier }) {
       {/* Content */}
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden', minHeight: expanded ? 400 : 300 }}>
         {view === 'list' && (
-          <ConversationList currentUser={currentUser} users={users}
+          <ConversationList currentUser={currentUser} users={users} dossiers={dossiers}
             onSelect={openThread} />
         )}
         {view === 'thread' && activeConversation && (
-          <MessageThread conversation={activeConversation} currentUser={currentUser} users={users}
+          <MessageThread conversation={activeConversation} currentUser={currentUser} users={users} dossiers={dossiers}
             onBack={() => { setView('list'); setActiveConversation(null); }}
             expanded={expanded} setExpanded={setExpanded} onClose={onClose} />
         )}

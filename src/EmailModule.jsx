@@ -77,7 +77,7 @@ function Modal({ title, onClose, children, maxWidth = 700 }) {
     <div className="ov" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth }}>
         <div className="mhdr">
-          <span style={{ fontWeight:800, fontSize:16 }}>{title}</span>
+          <span style={{ fontWeight:800, fontSize:16, color:'var(--or)' }}>{title}</span>
           <button className="bic" onClick={onClose}><Ic.X /></button>
         </div>
         {children}
@@ -92,6 +92,8 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
   const [tab, setTab] = useState('template'); // 'template' | 'manual'
   const [templateId, setTemplateId] = useState('');
   const [dossierId, setDossierId] = useState('');
+  const [dossierSearch, setDossierSearch] = useState('');
+  const [dossierDropOpen, setDossierDropOpen] = useState(false);
   const [to, setTo] = useState('');
   const [toName, setToName] = useState('');
   const [subject, setSubject] = useState('');
@@ -110,6 +112,26 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
     const d = dossiers.find(x => x.id === dossierId);
     if (d) { setTo(d.email || ''); setToName(d.client || ''); }
   }, [dossierId, dossiers]);
+
+  const dossierQ = dossierSearch.toLowerCase();
+  const filteredDossiers = (dossiers || []).filter(dd => {
+    if (!dossierQ) return true;
+    return [dd.dp_number, dd.client, dd.client_org, dd.email, dd.id]
+      .filter(Boolean).join(' ').toLowerCase().includes(dossierQ);
+  });
+
+  const selectDossier = (dd) => {
+    setDossierId(dd.id);
+    setDossierSearch([dd.dp_number, dd.client, dd.client_org].filter(Boolean).join(' — '));
+    setDossierDropOpen(false);
+  };
+
+  const clearDossier = () => {
+    setDossierId('');
+    setDossierSearch('');
+    setTo('');
+    setToName('');
+  };
 
   const parseExtraVars = () => {
     try { return extraVars ? JSON.parse(extraVars) : {}; } catch { return {}; }
@@ -165,30 +187,64 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
           ))}
         </div>
 
-        {/* Dossier picker (both modes) */}
+        {/* Dossier search + Destinataire */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-          <div className="fg">
-            <label className="lbl">Dossier associé (optionnel)</label>
-            <select className="fsel" style={{ width:'100%', padding:'8px 10px' }} value={dossierId} onChange={e => setDossierId(e.target.value)}>
-              <option value="">— aucun —</option>
-              {dossiers.map(d => <option key={d.id} value={d.id}>{d.client} ({d.id})</option>)}
-            </select>
+          <div className="fg" style={{ position:'relative' }}>
+            <label className="lbl" style={{ color:'var(--or)' }}>Dossier — N° DP, client, partenaire</label>
+            <div style={{ display:'flex', alignItems:'center', gap:6, border:'1.5px solid var(--bd)',
+              borderRadius:'var(--r)', padding:'6px 10px', background:'var(--bg3)', transition:'border-color 0.15s' }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <input value={dossierSearch}
+                onChange={e => { setDossierSearch(e.target.value); setDossierId(''); setDossierDropOpen(true); }}
+                onFocus={() => setDossierDropOpen(true)}
+                onBlur={() => setTimeout(() => setDossierDropOpen(false), 150)}
+                placeholder="Rechercher..."
+                style={{ flex:1, border:'none', outline:'none', background:'transparent',
+                  fontSize:13, fontFamily:'var(--ff)', color:'var(--tx)' }}
+              />
+              {dossierId && (
+                <button onClick={clearDossier} style={{ background:'none', border:'none', cursor:'pointer',
+                  padding:0, color:'var(--tx4)', display:'flex' }}>
+                  <Ic.X />
+                </button>
+              )}
+            </div>
+            {dossierDropOpen && filteredDossiers.length > 0 && !dossierId && (
+              <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:10,
+                background:'var(--bg2)', border:'1.5px solid var(--bd)', borderRadius:'var(--r)',
+                maxHeight:200, overflowY:'auto', boxShadow:'0 16px 40px rgba(0,0,0,.14)', marginTop:2 }}>
+                {filteredDossiers.slice(0, 20).map(dd => (
+                  <div key={dd.id} onClick={() => selectDossier(dd)}
+                    style={{ padding:'8px 12px', fontSize:13, cursor:'pointer', color:'var(--tx)',
+                      transition:'background 0.1s', display:'flex', alignItems:'center', gap:6 }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--or-l)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    {dd.dp_number && <span style={{ fontWeight:700, color:'var(--or)', fontSize:11,
+                      background:'var(--or-l)', padding:'1px 6px', borderRadius:6, flexShrink:0 }}>{dd.dp_number}</span>}
+                    <span style={{ fontWeight:600 }}>{dd.client || `#${dd.id}`}</span>
+                    {dd.client_org && <span style={{ color:'var(--tx3)', fontSize:12 }}>({dd.client_org})</span>}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="fg">
-            <label className="lbl">Destinataire *</label>
+            <label className="lbl" style={{ color:'var(--or)' }}>Destinataire *</label>
             <input value={to} onChange={e => setTo(e.target.value)} placeholder="email@exemple.fr" />
           </div>
         </div>
 
         <div className="fg">
-          <label className="lbl">Nom destinataire</label>
+          <label className="lbl" style={{ color:'var(--or)' }}>Nom destinataire</label>
           <input value={toName} onChange={e => setToName(e.target.value)} placeholder="Prénom Nom (optionnel)" />
         </div>
 
         {tab === 'template' && (
           <>
             <div className="fg">
-              <label className="lbl">Template *</label>
+              <label className="lbl" style={{ color:'var(--or)' }}>Template *</label>
               <select className="fsel" style={{ width:'100%', padding:'8px 10px' }} value={templateId} onChange={e => setTemplateId(e.target.value)}>
                 <option value="">— choisir un template —</option>
                 {Object.entries(
@@ -212,7 +268,7 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
             )}
 
             <div className="fg">
-              <label className="lbl">Variables supplémentaires (JSON, optionnel)</label>
+              <label className="lbl" style={{ color:'var(--or)' }}>Variables supplémentaires (JSON, optionnel)</label>
               <input value={extraVars} onChange={e => setExtraVars(e.target.value)}
                 placeholder='{"missing_docs": "• KBIS\\n• RIB"}' />
             </div>
@@ -222,16 +278,16 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
         {tab === 'manual' && (
           <>
             <div className="fg">
-              <label className="lbl">Sujet *</label>
+              <label className="lbl" style={{ color:'var(--or)' }}>Sujet *</label>
               <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Objet de l'email" />
             </div>
             <div className="fg">
-              <label className="lbl">Corps HTML *</label>
+              <label className="lbl" style={{ color:'var(--or)' }}>Corps HTML *</label>
               <textarea value={bodyHtml} onChange={e => setBodyHtml(e.target.value)} style={{ minHeight:140 }}
                 placeholder="<p>Bonjour,</p><p>...</p>" />
             </div>
             <div className="fg">
-              <label className="lbl">Corps texte brut (optionnel)</label>
+              <label className="lbl" style={{ color:'var(--or)' }}>Corps texte brut (optionnel)</label>
               <textarea value={bodyText} onChange={e => setBodyText(e.target.value)} style={{ minHeight:60 }}
                 placeholder="Version texte de l'email..." />
             </div>
@@ -245,7 +301,7 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
         </div>
         {schedule && (
           <div className="fg">
-            <label className="lbl">Date et heure d'envoi *</label>
+            <label className="lbl" style={{ color:'var(--or)' }}>Date et heure d'envoi *</label>
             <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
           </div>
         )}
@@ -394,7 +450,7 @@ function TabCompose({ templates, dossiers, showCompose, setShowCompose, toast })
         <div style={{ width:64, height:64, background:'var(--or-l)', borderRadius:16, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 16px', fontSize:32 }}>
           ✉️
         </div>
-        <div style={{ fontSize:18, fontWeight:700, color:'var(--tx)', marginBottom:8 }}>Envoyer un email</div>
+        <div style={{ fontSize:18, fontWeight:700, color:'var(--or)', marginBottom:8 }}>Envoyer un email</div>
         <div style={{ color:'var(--tx3)', fontSize:14, marginBottom:24, maxWidth:400, margin:'0 auto 24px' }}>
           Composez et envoyez un email à un client, une mairie ou une administration — avec ou sans template.
         </div>
