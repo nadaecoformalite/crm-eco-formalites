@@ -394,49 +394,24 @@ function Login({onLogin}){
     }catch(e){setErr(e.message||"Erreur de connexion.");}
     finally{setLoading(false);}
   };
-  return <div style={{minHeight:'100vh',display:'flex',background:'#0E0E0D',fontFamily:"'DM Sans',sans-serif",overflow:'hidden',position:'relative'}}>
+  return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#0E0E0D',fontFamily:"'DM Sans',sans-serif",overflow:'hidden',position:'relative'}}>
     {/* Animated background shapes */}
     <div style={{position:'absolute',top:'-15%',right:'-10%',width:'600px',height:'600px',borderRadius:'50%',background:'radial-gradient(circle,rgba(232,80,26,.12) 0%,transparent 70%)',animation:'pulse1 8s ease-in-out infinite'}}/>
     <div style={{position:'absolute',bottom:'-20%',left:'-8%',width:'500px',height:'500px',borderRadius:'50%',background:'radial-gradient(circle,rgba(232,80,26,.08) 0%,transparent 70%)',animation:'pulse2 10s ease-in-out infinite'}}/>
     <div style={{position:'absolute',top:'40%',left:'30%',width:'300px',height:'300px',borderRadius:'50%',background:'radial-gradient(circle,rgba(232,80,26,.05) 0%,transparent 70%)',animation:'pulse1 12s ease-in-out infinite'}}/>
     <style>{`@keyframes pulse1{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.15);opacity:1}}@keyframes pulse2{0%,100%{transform:scale(1.1);opacity:.6}50%{transform:scale(.9);opacity:1}}@keyframes fadeUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}`}</style>
 
-    {/* Left panel — branding (hidden on mobile) */}
-    <div style={{flex:1,display:'flex',flexDirection:'column',justifyContent:'center',padding:'60px 50px',position:'relative',zIndex:1,minHeight:'100vh'}}>
-      <div style={{animation:'fadeUp .8s ease',maxWidth:480}}>
-        <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:40}}>
-          <div style={{width:52,height:52,borderRadius:14,background:'#E8501A',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 8px 30px rgba(232,80,26,.35)'}}>
-            <span style={{color:'#fff',fontWeight:800,fontSize:16}}>ECO</span>
+    {/* Centered login form */}
+    <div style={{width:'100%',maxWidth:440,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:'40px 20px',position:'relative',zIndex:2}}>
+      <div style={{width:'100%',maxWidth:400,animation:'fadeUp .6s ease'}}>
+        {/* Logo centered */}
+        <div style={{textAlign:'center',marginBottom:30}}>
+          <div style={{width:56,height:56,borderRadius:15,background:'#E8501A',display:'inline-flex',alignItems:'center',justifyContent:'center',boxShadow:'0 8px 30px rgba(232,80,26,.35)',marginBottom:12}}>
+            <span style={{color:'#fff',fontWeight:800,fontSize:17}}>ECO</span>
           </div>
-          <div>
-            <div style={{color:'#fff',fontSize:22,fontWeight:800,letterSpacing:'-.3px'}}>Eco-formalités</div>
-            <div style={{color:'rgba(255,255,255,.4)',fontSize:12,fontWeight:500}}>Plateforme de gestion CRM</div>
-          </div>
+          <div style={{color:'#fff',fontSize:22,fontWeight:800,letterSpacing:'-.3px'}}>Eco-formalités</div>
+          <div style={{color:'rgba(255,255,255,.4)',fontSize:12,fontWeight:500,marginTop:4}}>Plateforme de gestion CRM</div>
         </div>
-        <h1 style={{color:'#fff',fontSize:36,fontWeight:800,lineHeight:1.2,marginBottom:16,letterSpacing:'-.5px'}}>Gérez vos dossiers<br/><span style={{color:'#E8501A'}}>énergétiques</span> simplement</h1>
-        <p style={{color:'rgba(255,255,255,.45)',fontSize:15,lineHeight:1.7,maxWidth:400}}>Demandes préalables, raccordements, CONSUEL, récupération de TVA — tout centralisé dans un seul outil.</p>
-        <div style={{display:'flex',gap:24,marginTop:40}}>
-          {[{n:'250+',l:'Dossiers traités'},{n:'98%',l:'Taux de réussite'},{n:'24/7',l:'Accès sécurisé'}].map((s,i)=>
-            <div key={i} style={{animation:`fadeUp ${.8+i*.15}s ease`}}>
-              <div style={{color:'#E8501A',fontSize:28,fontWeight:800}}>{s.n}</div>
-              <div style={{color:'rgba(255,255,255,.35)',fontSize:11,fontWeight:500,marginTop:2}}>{s.l}</div>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-
-    {/* Right panel — login form */}
-    <div style={{width:'100%',maxWidth:480,display:'flex',alignItems:'center',justifyContent:'center',padding:'40px 20px',position:'relative',zIndex:2}}>
-      <div style={{width:'100%',maxWidth:380,animation:'fadeUp .6s ease'}}>
-        {/* Mobile logo (shown only on small screens) */}
-        <div className="login-mobile-logo" style={{display:'none',textAlign:'center',marginBottom:30}}>
-          <div style={{width:48,height:48,borderRadius:13,background:'#E8501A',display:'inline-flex',alignItems:'center',justifyContent:'center',boxShadow:'0 6px 24px rgba(232,80,26,.35)',marginBottom:10}}>
-            <span style={{color:'#fff',fontWeight:800,fontSize:14}}>ECO</span>
-          </div>
-          <div style={{color:'#fff',fontSize:18,fontWeight:800}}>Eco-formalités</div>
-        </div>
-        <style>{`@media(max-width:768px){.login-mobile-logo{display:block!important}.login-left-panel{display:none!important}}`}</style>
 
         <div style={{background:'rgba(255,255,255,.04)',backdropFilter:'blur(20px)',border:'1px solid rgba(255,255,255,.08)',borderRadius:20,padding:'36px 30px',boxShadow:'0 20px 60px rgba(0,0,0,.3)'}}>
           <div style={{marginBottom:28}}>

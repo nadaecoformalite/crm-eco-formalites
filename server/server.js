@@ -440,19 +440,34 @@ app.put('/api/users/:id/smtp', (req, res) => {
 const ANNUAIRE_BASE = 'https://api-lannuaire.service-public.fr/api/explore/v2.1/catalog/datasets/api-lannuaire-administration/records';
 const ANNUAIRE_FIELDS = 'nom,pivot,adresse_courriel,adresse,plage_ouverture,site_internet,telephone,code_insee_commune,sve,formulaire_contact';
 
+// ══════════════════════════════════════════════════════════════════════════════
+// URBANISME / GNAU — Recherche de plateforme pour toute commune de France
+// Stratégie : commune → API Géo (EPCI) → cache EPCI → scan URLs → Google fallback
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Cache EPCI → GNAU en SQLite ────────────────────────────────────────────
+db.run('CREATE TABLE IF NOT EXISTS gnau_cache (epci_code TEXT PRIMARY KEY, epci_nom TEXT, urls TEXT, platform_type TEXT, source TEXT, updated TEXT)', err => {
+  if (err) console.error('gnau_cache table:', err);
+  else console.log('gnau_cache table OK');
+});
+
 // ── Mots-clés HTML pour détecter une vraie page GNAU/urbanisme ──────────────
 const KEYWORDS_HTML = [
-  'gnau','guichet numerique des autorisations d urbanisme', 
+  'gnau','guichet numerique des autorisations d urbanisme',
   "guichet numérique des autorisations d'urbanisme",
   'operis','geosphere','geopermis','e-permis','sve sirap',"ide'au",'ideau',
-  "autorisation d urbanisme","autorisation d'urbanisme",'urbanisme',
+  "autorisation d urbanisme","autorisation d'urbanisme",
   'guichet unique','deposer un dossier','déposer un dossier',
   'permis de construire en ligne','demande d autorisation',
   'communaute de communes','communauté de communes',
   "communaute d agglomeration","communauté d'agglomération",
-  'metropole','métropole','service urbanisme', 'OpenADS' , 'Next ADS',
-  'demarches en ligne urbanisme','teleprocedure urbanisme', 'Cart@DS',
-  'téléprocédure urbanisme', 'ingenieriere70', 'sirap', 'atip67', 'oci-urbanisme', 'xdemat', 'xurba', 'ads', 'ideau',
+  'metropole','métropole','service urbanisme','openads','next ads',
+  'demarches en ligne urbanisme','teleprocedure urbanisme','cart@ds','cartads',
+  'téléprocédure urbanisme','ingenieriere70','sirap','atip67','oci-urbanisme',
+  'xdemat','xurba','ads','ideau','rxu','aruci','adau',
+  'depot en ligne','dépôt en ligne','teleservice urbanisme','téléservice urbanisme',
+  'declaration prealable','déclaration préalable','permis de construire',
+  'demande prealable','demande préalable',
 ];
 
 // ── Patterns d'URL de plateformes GNAU/urbanisme ────────────────────────────
@@ -466,11 +481,11 @@ const GNAU_PATTERNS = [
   'https://cartads.{slug}.fr/guichet-unique',
   'https://cartads.{slug}.fr/gnau',
   'https://gnau.cartads.fr/{slug}',
-  // SIRAP Next’ADS
+  'https://{slug}.cartads.fr/',
+  // SIRAP Next'ADS
   'https://portail-usager.sirap.fr/{slug}',
   'https://portail-usager.sirap.com/{slug}',
-  'https://portail-usager.sirap.com/recherche-commune',
-  'https://sve.sirap.fr',
+  'https://sve.sirap.fr/{slug}',
   // GEO PERMIS / E-PERMIS
   'https://www.geopermis.fr/{slug}',
   'https://www.e-permis.fr/{slug}',
@@ -479,14 +494,20 @@ const GNAU_PATTERNS = [
   'https://appli.atip67.fr/guichet-unique/Accueil',
   // OCI URBANISME
   'https://saasweb.oci-urbanisme.fr/{slug}',
-  // XDEMAT
+  // XDEMAT / XURBA
   'https://www.spl-xdemat.fr/Xurba/gnau/',
+  'https://{slug}.xurba.fr/',
+  'https://xurba.{slug}.fr/',
+  // iDE'AU
+  'https://{slug}.ideau.fr/',
+  'https://ideau.{slug}.fr/',
   // ADS
   'https://{slug}.ads.{slug}.fr/gnau/#/',
   'https://ads.{slug}.fr/gnau/#/',
   'https://{slug}.ads.fr/gnau/#/',
   // INGENIERIE
   'https://urbanisme.{slug}.fr/gnaud/',
+  'https://urbanisme.{slug}.fr/',
   // DOMAINES DIRECTS
   'https://gnau.{slug}.fr/',
   'https://{slug}.fr/gnau/',
@@ -496,21 +517,25 @@ const GNAU_PATTERNS = [
   'https://www.{slug}.fr/guichet-unique',
   'https://{slug}.fr/urbanisme',
   'https://www.{slug}.fr/urbanisme',
-
+  'https://{slug}.fr/urbanisme/gnau',
+  'https://www.{slug}.fr/urbanisme/gnau',
+  // DEMARCHES SIMPLIFIEES
+  'https://{slug}.fr/demarches',
+  'https://www.{slug}.fr/demarches',
+  // PORTAILS SPECIFIQUES
+  'https://urbanisme.{slug}.fr/gnau/',
+  'https://urbanisme.{slug}.fr/gnau/#/',
+  'https://gnau.{slug}.fr/gnau/#/',
+  'https://sve.{slug}.fr/',
+  'https://autorisations-urbanisme.{slug}.fr/',
+  'https://ads.{slug}.fr/',
+  'https://guichet-unique.{slug}.fr/',
 ];
 
-const EXTRA_PATHS = ['gnau','gnau/#/','guichet-unique','guichet-unique/Accueil','urbanisme','ads','ads/gnau'];
+const EXTRA_PATHS = ['gnau','gnau/#/','guichet-unique','guichet-unique/Accueil','urbanisme','ads','ads/gnau','urbanisme/gnau','demarches/urbanisme'];
 
-const SPECIAL_URLS = [
-  'https://www.e-permis.fr/',
-  'https://portail-usager.sirap.com/recherche-commune',
-  'https://www.spl-xdemat.fr/Xurba/gnau/',
-  'https://www.geopermis.fr/',
-  'https://appli.atip67.fr/guichet-unique/Accueil',
-];
-
-const GNAU_TIMEOUT = 4000; // 4s par URL
-const GNAU_CONCURRENCY = 25; // requêtes parallèles
+const GNAU_TIMEOUT = 5000;
+const GNAU_CONCURRENCY = 30;
 
 // ── Utilitaires ─────────────────────────────────────────────────────────────
 
@@ -523,6 +548,49 @@ function slugify(text) {
 
 function normalizeText(text) {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Extrait le nom court d'un EPCI (sans le préfixe "CC de", "CA de", etc.) */
+function epciShortNames(fullName) {
+  const names = new Set();
+  names.add(fullName);
+  // Retirer les préfixes institutionnels
+  const prefixes = [
+    /^communaut[eé]\s+de\s+communes\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^communaut[eé]\s+d['']?agglom[eé]ration\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^communaut[eé]\s+urbaine\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^m[eé]tropole\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^cc\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^ca\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^cu\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+  ];
+  for (const p of prefixes) {
+    const stripped = fullName.replace(p, '').trim();
+    if (stripped && stripped !== fullName) names.add(stripped);
+  }
+  return [...names];
+}
+
+/** Génère les variantes de slug pour un EPCI */
+function epciSlugVariants(fullName) {
+  const slugs = new Set();
+  const shortNames = epciShortNames(fullName);
+
+  for (const name of shortNames) {
+    const s = slugify(name);
+    slugs.add(s);
+    // Préfixes courants
+    slugs.add('cc-' + s);
+    slugs.add('ca-' + s);
+    slugs.add('cu-' + s);
+    slugs.add('cdc-' + s);
+    slugs.add('agglo-' + s);
+  }
+
+  // Slug complet du nom original
+  slugs.add(slugify(fullName));
+
+  return [...slugs];
 }
 
 /** Vérifie si le HTML contient assez de mots-clés urbanisme (seuil = 2) */
@@ -555,6 +623,89 @@ function identifyPlatformType(url) {
   return 'Plateforme urbanisme';
 }
 
+// ── API Géo : commune → EPCI (gratuit, pas de clé API) ──────────────────────
+
+async function getEpciFromGeoApi(ville, codePostal) {
+  try {
+    // Essai 1 : par nom + code postal
+    let url = `https://geo.api.gouv.fr/communes?nom=${encodeURIComponent(ville)}&fields=nom,code,codeDepartement,codeEpci,epci,codesPostaux&limit=5`;
+    if (codePostal) url += `&codePostal=${encodeURIComponent(codePostal)}`;
+
+    const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) return null;
+    const communes = await resp.json();
+
+    if (!communes.length && codePostal) {
+      // Essai 2 : par code postal seul
+      const resp2 = await fetch(`https://geo.api.gouv.fr/communes?codePostal=${encodeURIComponent(codePostal)}&fields=nom,code,codeDepartement,codeEpci,epci,codesPostaux&limit=10`, { signal: AbortSignal.timeout(5000) });
+      if (resp2.ok) {
+        const byCP = await resp2.json();
+        const villeNorm = normalizeText(ville);
+        const match = byCP.find(c => normalizeText(c.nom) === villeNorm) || byCP[0];
+        if (match) communes.push(match);
+      }
+    }
+
+    if (!communes.length) return null;
+
+    // Trouver la meilleure correspondance
+    const villeNorm = normalizeText(ville);
+    const commune = communes.find(c => normalizeText(c.nom) === villeNorm) || communes[0];
+
+    const result = {
+      codeInsee: commune.code,
+      nomCommune: commune.nom,
+      codeDepartement: commune.codeDepartement,
+      codeEpci: commune.codeEpci || commune.epci?.code || null,
+      nomEpci: commune.epci?.nom || null,
+    };
+
+    // Si on a le code EPCI mais pas le nom, chercher le détail
+    if (result.codeEpci && !result.nomEpci) {
+      try {
+        const epciResp = await fetch(`https://geo.api.gouv.fr/epcis/${result.codeEpci}?fields=nom`, { signal: AbortSignal.timeout(3000) });
+        if (epciResp.ok) {
+          const epciData = await epciResp.json();
+          result.nomEpci = epciData.nom;
+        }
+      } catch {}
+    }
+
+    console.log(`   📍 API Géo : ${result.nomCommune} (${result.codeInsee}) → EPCI: ${result.nomEpci || 'inconnu'} (${result.codeEpci || 'n/a'})`);
+    return result;
+  } catch (err) {
+    console.error('   ⚠ API Géo erreur:', err.message);
+    return null;
+  }
+}
+
+// ── Cache EPCI helpers ──────────────────────────────────────────────────────
+
+function getCachedGnau(epciCode) {
+  return new Promise((resolve) => {
+    db.get('SELECT * FROM gnau_cache WHERE epci_code = ?', [epciCode], (err, row) => {
+      if (err || !row) return resolve(null);
+      // Cache valide 30 jours
+      const age = Date.now() - new Date(row.updated).getTime();
+      if (age > 30 * 24 * 60 * 60 * 1000) return resolve(null);
+      resolve({
+        urls: JSON.parse(row.urls || '[]'),
+        platform_type: row.platform_type,
+        source: row.source,
+        epci_nom: row.epci_nom,
+      });
+    });
+  });
+}
+
+function setCachedGnau(epciCode, epciNom, urls, source) {
+  const platformType = urls.length ? identifyPlatformType(urls[0]) : null;
+  db.run(
+    'INSERT OR REPLACE INTO gnau_cache (epci_code, epci_nom, urls, platform_type, source, updated) VALUES (?,?,?,?,?,?)',
+    [epciCode, epciNom, JSON.stringify(urls), platformType, source, new Date().toISOString()]
+  );
+}
+
 // ── Génération de toutes les URLs candidates ────────────────────────────────
 
 function generateUrls(name) {
@@ -579,8 +730,31 @@ function generateUrls(name) {
     }
   }
 
-  // URLs spéciales connues
-  for (const u of SPECIAL_URLS) urls.add(u);
+  return [...urls];
+}
+
+/** Génère les URLs pour un EPCI en testant toutes les variantes de slug */
+function generateEpciUrls(epciName) {
+  const slugs = epciSlugVariants(epciName);
+  const urls = new Set();
+
+  for (const slug of slugs) {
+    for (const p of GNAU_PATTERNS) {
+      if (p.includes('{n}')) {
+        for (let n = 1; n <= 49; n++) {
+          urls.add(p.replace(/\{n\}/g, n).replace(/\{slug\}/g, slug));
+        }
+      } else {
+        urls.add(p.replace(/\{slug\}/g, slug));
+      }
+    }
+    for (const domain of [`${slug}.fr`, `www.${slug}.fr`]) {
+      for (const path of EXTRA_PATHS) {
+        urls.add(`https://${domain}/${path}`);
+        urls.add(`https://${domain}/${path}/`);
+      }
+    }
+  }
 
   return [...urls];
 }
@@ -594,106 +768,147 @@ async function checkUrl(url) {
     const resp = await fetch(url, {
       signal: controller.signal,
       redirect: 'follow',
-      headers: { 'User-Agent': 'Mozilla/5.0 EcoFormalitesCRM/1.0' },
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36 EcoFormalitesCRM/2.0' },
     });
     clearTimeout(timer);
     if (resp.status >= 200 && resp.status < 400) {
       const html = await resp.text();
-      if (isGnauHtml(html)) return url;
+      if (isGnauHtml(html)) return { url, finalUrl: resp.url };
     }
-  } catch { /* timeout, DNS fail, etc. — on ignore */ }
+  } catch { /* timeout, DNS fail, etc. */ }
   return null;
 }
 
 /**
- * Lance toutes les vérifications d'URL en parallèle avec limite de concurrence.
- * Retourne la liste des URLs qui sont vivantes ET contiennent du contenu urbanisme.
+ * Scan toutes les URLs en parallèle avec concurrence limitée.
+ * Retourne les URLs vivantes contenant du contenu urbanisme.
  */
 async function scanAllUrls(urls) {
   const results = [];
-  // Process in batches for concurrency control
   for (let i = 0; i < urls.length; i += GNAU_CONCURRENCY) {
     const batch = urls.slice(i, i + GNAU_CONCURRENCY);
     const batchResults = await Promise.allSettled(batch.map(u => checkUrl(u)));
     for (const r of batchResults) {
-      if (r.status === 'fulfilled' && r.value) results.push(r.value);
+      if (r.status === 'fulfilled' && r.value) {
+        const finalUrl = r.value.finalUrl || r.value.url;
+        if (!results.includes(finalUrl)) results.push(finalUrl);
+      }
     }
-    // Early exit si on a déjà trouvé des résultats
     if (results.length >= 3) break;
   }
   return results;
 }
 
-// ── Recherche d'intercommunalité via Google Custom Search (fallback) ────────
+// ── Google Search fallback : chercher la plateforme GNAU via Google ────────
 
-async function findIntercommunalite(ville) {
+/**
+ * Recherche Google Custom Search et retourne le 1er lien GNAU/urbanisme trouvé.
+ * Vérifie que l'URL pointe bien vers une plateforme urbanisme.
+ */
+async function googleSearchGnau(query) {
   const apiKey = process.env.GOOGLE_API_KEY;
   const cx = process.env.GOOGLE_CX;
-  if (!apiKey || !cx || apiKey === 'votre_cle_google_api') return null;
+  if (!apiKey || !cx || apiKey === 'votre_cle_google_api') return [];
 
-  const queries = [
-    `communauté de communes ${ville}`,
-    `communauté d'agglomération ${ville}`,
-    `${ville} métropole`,
-  ];
+  try {
+    console.log(`   Google : "${query}"`);
+    const url = `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(apiKey)}&cx=${encodeURIComponent(cx)}&q=${encodeURIComponent(query)}&num=10&lr=lang_fr&gl=fr`;
+    const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!resp.ok) { console.log(`   Google HTTP ${resp.status}`); return []; }
+    const data = await resp.json();
 
-  for (const q of queries) {
-    try {
-      const url = `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(apiKey)}&cx=${encodeURIComponent(cx)}&q=${encodeURIComponent(q)}&num=5&lr=lang_fr&gl=fr`;
-      const resp = await fetch(url);
-      if (!resp.ok) continue;
-      const data = await resp.json();
-      for (const item of (data.items || [])) {
-        const text = `${item.title || ''} ${item.snippet || ''}`.toLowerCase();
-        if (text.includes('communauté') || text.includes('métropole') || text.includes('agglomération')) {
-          return extractIntercoName(text);
-        }
+    const candidateUrls = [];
+    for (const item of (data.items || [])) {
+      const link = item.link || '';
+      // Garder les URLs qui ressemblent à des plateformes GNAU/urbanisme
+      if (/gnau|operis|geosphere|cartads|sirap|geopermis|e-permis|xurba|xdemat|ideau|oci-urbanisme|guichet-unique|urbanisme|openads|next-ads|sve\.|adau|aruci/i.test(link)) {
+        candidateUrls.push(link);
       }
-    } catch { continue; }
+    }
+
+    if (!candidateUrls.length) {
+      console.log('   Google : aucun lien plateforme dans les résultats');
+      return [];
+    }
+
+    // Vérifier que les URLs sont vivantes et contiennent du contenu urbanisme
+    const verified = [];
+    const checks = await Promise.allSettled(candidateUrls.map(u => checkUrl(u)));
+    for (const r of checks) {
+      if (r.status === 'fulfilled' && r.value) {
+        verified.push(r.value.finalUrl || r.value.url);
+      }
+    }
+
+    // Si aucune URL vérifiée, retourner quand même le 1er lien Google (il peut être un SPA non détectable par keywords)
+    if (!verified.length && candidateUrls.length) {
+      console.log('   Google : URLs non vérifiées par keywords, on garde le 1er résultat Google');
+      verified.push(candidateUrls[0]);
+    }
+
+    return verified;
+  } catch (err) {
+    console.error('   Google Search error:', err.message);
+    return [];
   }
-  return null;
 }
 
-function extractIntercoName(text) {
-  const patterns = [
-    /communaut[eé] de communes [a-zA-ZÀ-ÿ\- ]+/i,
-    /communaut[eé] d['']agglom[eé]ration [a-zA-ZÀ-ÿ\- ]+/i,
-    /[a-zA-ZÀ-ÿ\- ]+ m[eé]tropole/i,
-  ];
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m) return m[0].trim();
-  }
-  return null;
-}
+// ── Recherche GNAU : chemin précis ──────────────────────────────────────────
+// Étape 1 : gnau "code_postal" "ville"
+// Étape 2 : gnau "communauté de communes" "code_postal" "ville"
 
-// ── Recherche complète GNAU : ville → intercommunalité ──────────────────────
+async function findGnau(ville, epciInfo, codePostal) {
+  const epciCode = epciInfo?.codeEpci;
+  const epciName = epciInfo?.nomEpci;
+  const cp = codePostal || '';
 
-async function findGnau(ville, epciName) {
-  console.log(`🔍 Scan GNAU pour : ${ville}`);
-
-  // Étape 1 : scanner les URLs de la ville
-  const villeUrls = generateUrls(ville);
-  console.log(`   → ${villeUrls.length} URLs candidates (ville)`);
-  const villeResults = await scanAllUrls(villeUrls);
-
-  if (villeResults.length) {
-    return { source: 'ville', urls: villeResults };
+  // ── Cache EPCI : si déjà trouvé, retourner directement ──
+  if (epciCode) {
+    const cached = await getCachedGnau(epciCode);
+    if (cached && cached.urls.length > 0) {
+      console.log(`   Cache EPCI hit : ${cached.epci_nom} -> ${cached.urls.length} URL(s)`);
+      return { source: 'cache_epci', interco: cached.epci_nom, urls: cached.urls };
+    }
   }
 
-  // Étape 2 : tenter avec l'intercommunalité (EPCI)
-  const intercoName = epciName || await findIntercommunalite(ville);
-  if (!intercoName) {
-    console.log('   → Aucune intercommunalité trouvée');
-    return { source: null, urls: [] };
+  console.log(`\n   Recherche GNAU pour : ${ville} ${cp}`);
+
+  // ── Étape 1 : Google → gnau "code_postal" "ville" ──
+  const q1 = `gnau ${cp ? '"' + cp + '"' : ''} "${ville}"`;
+  const step1 = await googleSearchGnau(q1);
+
+  if (step1.length) {
+    console.log(`   TROUVE (étape 1) : ${step1[0]}`);
+    if (epciCode) setCachedGnau(epciCode, epciName, step1, 'google_ville');
+    return { source: 'google_ville', urls: step1 };
   }
 
-  console.log(`   → Intercommunalité : ${intercoName}`);
-  const intercoUrls = generateUrls(intercoName);
-  console.log(`   → ${intercoUrls.length} URLs candidates (intercommunalité)`);
-  const intercoResults = await scanAllUrls(intercoUrls);
+  // ── Étape 2 : Google → gnau "communauté de communes" "code_postal" "ville" ──
+  if (epciName) {
+    const q2 = `gnau "${epciName}" ${cp ? '"' + cp + '"' : ''} "${ville}"`;
+    const step2 = await googleSearchGnau(q2);
 
-  return { source: 'intercommunalité', interco: intercoName, urls: intercoResults };
+    if (step2.length) {
+      console.log(`   TROUVE (étape 2 - EPCI) : ${step2[0]}`);
+      if (epciCode) setCachedGnau(epciCode, epciName, step2, 'google_epci');
+      return { source: 'google_epci', interco: epciName, urls: step2 };
+    }
+
+    // ── Étape 2b : essayer juste avec le nom de l'EPCI ──
+    const q2b = `gnau "${epciName}"`;
+    const step2b = await googleSearchGnau(q2b);
+
+    if (step2b.length) {
+      console.log(`   TROUVE (étape 2b - EPCI seul) : ${step2b[0]}`);
+      if (epciCode) setCachedGnau(epciCode, epciName, step2b, 'google_epci');
+      return { source: 'google_epci', interco: epciName, urls: step2b };
+    }
+  }
+
+  // ── Rien trouvé ──
+  if (epciCode) setCachedGnau(epciCode, epciName, [], 'not_found');
+  console.log('   Aucune plateforme trouvée');
+  return { source: null, urls: [] };
 }
 
 // ── Annuaire Service Public — helpers ────────────────────────────────────────
@@ -807,7 +1022,10 @@ app.post('/api/urbanisme/lookup', async (req, res) => {
     const villeNorm = ville.trim();
     console.log(`\n🏛  Recherche urbanisme : ${villeNorm} ${code_postal || ''}`);
 
-    // ── 1. Annuaire service-public.fr : mairie ──
+    // ── 1. API Géo : identifier la commune + EPCI (gratuit, fiable, 35k+ communes) ──
+    const geoInfo = await getEpciFromGeoApi(villeNorm, code_postal);
+
+    // ── 2. Annuaire service-public.fr : mairie ──
     let mairieWhere = `pivot LIKE "mairie" AND nom LIKE "${villeNorm}"`;
     if (code_postal) {
       mairieWhere = `pivot LIKE "mairie" AND (nom LIKE "${villeNorm}" OR adresse LIKE "${villeNorm}") AND adresse LIKE "${code_postal}"`;
@@ -827,16 +1045,17 @@ app.post('/api/urbanisme/lookup', async (req, res) => {
       }
     } catch {}
 
-    // ── 2. Google Places : mairie (nom, adresse, horaires, tél) ──
+    // ── 3. Google Places : mairie (nom, adresse, horaires, tél) ──
     const mairieGoogle = await searchMairieGoogle(villeNorm, code_postal);
 
-    // ── 3. Fusionner ──
+    // ── 4. Fusionner ──
     const mairie = mergeMairieSources(mairieAnnuaire, mairieGoogle);
 
-    // ── 4. Annuaire : communauté de communes / EPCI ──
+    // ── 5. Annuaire : communauté de communes / EPCI (enrichissement) ──
     let epci = null;
+    const epciSearchName = geoInfo?.nomEpci || mairie?.commune || villeNorm;
     try {
-      const epciWhere = `pivot LIKE "epci" AND adresse LIKE "${mairie?.commune || villeNorm}"`;
+      const epciWhere = `pivot LIKE "epci" AND (nom LIKE "${epciSearchName}" OR adresse LIKE "${mairie?.commune || villeNorm}")`;
       const epciUrl = `${ANNUAIRE_BASE}?limit=3&select=${encodeURIComponent(ANNUAIRE_FIELDS)}&where=${encodeURIComponent(epciWhere)}`;
       const epciRes = await fetch(epciUrl);
       if (epciRes.ok) {
@@ -845,33 +1064,39 @@ app.post('/api/urbanisme/lookup', async (req, res) => {
       }
     } catch {}
 
-    // ── 5. SCAN GNAU : brute-force patterns d'URL (ville → intercommunalité) ──
-    const gnauResult = await findGnau(villeNorm, epci?.nom);
+    // ── 6. GNAU : Google "gnau CP ville" puis "gnau EPCI CP ville" ──
+    const gnauResult = await findGnau(villeNorm, {
+      codeEpci: geoInfo?.codeEpci,
+      nomEpci: geoInfo?.nomEpci || epci?.nom,
+      codeDepartement: geoInfo?.codeDepartement,
+    }, code_postal);
     const platformUrls = (gnauResult.urls || []).map(u => ({
       lien: u,
       type: identifyPlatformType(u),
       source: gnauResult.source || 'scan',
-      interco: gnauResult.interco || null,
+      interco: gnauResult.interco || geoInfo?.nomEpci || null,
     }));
 
-    // ── 6. Résultat final ──
+    // ── 7. Résultat final ──
     const result = {
-      ville: villeNorm,
+      ville: geoInfo?.nomCommune || villeNorm,
       code_postal: code_postal || mairie?.code_postal || null,
+      code_insee: geoInfo?.codeInsee || mairie?.code_insee || null,
+      departement: geoInfo?.codeDepartement || null,
       date_recherche: new Date().toISOString(),
       mairie,
-      epci,
+      epci: epci ? { ...epci, code_epci: geoInfo?.codeEpci || null } : geoInfo?.codeEpci ? { nom: geoInfo.nomEpci, code_epci: geoInfo.codeEpci } : null,
       plateforme_urbanisme: platformUrls,
       gnau_source: gnauResult.source || null,
-      gnau_interco: gnauResult.interco || null,
+      gnau_interco: gnauResult.interco || geoInfo?.nomEpci || null,
       email_urbanisme: mairie?.email || null,
       telephone: mairie?.telephone || null,
       sve: mairie?.sve || epci?.sve || null,
       plage_ouverture: mairie?.plage_ouverture || null,
-      intercommunalite: epci?.nom || null,
+      intercommunalite: geoInfo?.nomEpci || epci?.nom || null,
     };
 
-    console.log(`   ✅ Mairie: ${mairie?.nom || 'non trouvée'} | GNAU: ${platformUrls.length} lien(s) | EPCI: ${epci?.nom || 'non trouvé'}`);
+    console.log(`   ✅ Mairie: ${mairie?.nom || 'non trouvée'} | EPCI: ${geoInfo?.nomEpci || epci?.nom || 'non trouvé'} (${geoInfo?.codeEpci || 'n/a'}) | GNAU: ${platformUrls.length} lien(s) [${gnauResult.source || 'aucun'}]`);
     res.json(result);
   } catch (err) {
     console.error('Urbanisme lookup error:', err);

@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { getToken } from './api.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+
+function authHeaders(extra = {}) {
+  const token = getToken();
+  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra };
+}
 
 // ── Helper: timeAgo ────────────────────────────────────────────────────────────
 
@@ -350,7 +356,7 @@ function MessageThread({ conversation, currentUser, users, dossiers, onBack, exp
   // Load initial messages
   const loadMessages = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/chat/conversations/${conversation.id}/messages?limit=50`);
+      const res = await fetch(`${API_URL}/chat/conversations/${conversation.id}/messages?limit=50`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setMessages(data);
@@ -362,7 +368,7 @@ function MessageThread({ conversation, currentUser, users, dossiers, onBack, exp
   const pollMessages = useCallback(async () => {
     if (!lastIdRef.current) return;
     try {
-      const res = await fetch(`${API_URL}/chat/conversations/${conversation.id}/messages?limit=50&after_id=${lastIdRef.current}`);
+      const res = await fetch(`${API_URL}/chat/conversations/${conversation.id}/messages?limit=50&after_id=${lastIdRef.current}`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       if (data.length > 0) {
@@ -377,7 +383,7 @@ function MessageThread({ conversation, currentUser, users, dossiers, onBack, exp
     try {
       await fetch(`${API_URL}/chat/conversations/${conversation.id}/read`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ user_id: currentUser.id }),
       });
     } catch { /* ignore */ }
@@ -409,7 +415,7 @@ function MessageThread({ conversation, currentUser, users, dossiers, onBack, exp
       if (audioDuration != null) body.audio_duration = audioDuration;
       const res = await fetch(`${API_URL}/chat/conversations/${conversation.id}/messages`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(body),
       });
       if (res.ok) {
@@ -607,7 +613,7 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
       };
       const res = await fetch(`${API_URL}/chat/conversations`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify(body),
       });
       if (res.ok) {
@@ -768,7 +774,7 @@ function ConversationList({ currentUser, users, dossiers, onSelect, onDelete }) 
 
   const loadConversations = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/chat/conversations?user_id=${currentUser.id}`);
+      const res = await fetch(`${API_URL}/chat/conversations?user_id=${currentUser.id}`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setConversations(data);
@@ -786,7 +792,7 @@ function ConversationList({ currentUser, users, dossiers, onSelect, onDelete }) 
     e.stopPropagation();
     if (!confirm(`Supprimer la conversation "${conv.title}" ?`)) return;
     try {
-      await fetch(`${API_URL}/chat/conversations/${conv.id}`, { method: 'DELETE' });
+      await fetch(`${API_URL}/chat/conversations/${conv.id}`, { method: 'DELETE', headers: authHeaders() });
       setConversations(prev => prev.filter(c => c.id !== conv.id));
       if (onDelete) onDelete(conv);
     } catch { /* ignore */ }
@@ -1025,7 +1031,7 @@ export default function ChatBubble({ currentUser, dossiers, users }) {
   const fetchUnread = useCallback(async () => {
     if (!currentUser?.id) return;
     try {
-      const res = await fetch(`${API_URL}/chat/unread-count?user_id=${currentUser.id}`);
+      const res = await fetch(`${API_URL}/chat/unread-count?user_id=${currentUser.id}`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setUnread(data.count || 0);

@@ -48,7 +48,7 @@ function generateToken(user) {
  * Middleware de vérification de rôle admin.
  */
 function requireAdmin(req, res, next) {
-  if (!req.user || req.user.role !== 'admin') {
+  if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'superadmin')) {
     return res.status(403).json({ error: 'Accès réservé aux administrateurs.' });
   }
   next();

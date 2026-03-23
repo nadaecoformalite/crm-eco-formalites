@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "echo '  ➜  App Desktop : http://localhost:5134' && echo '  ➜  App Web     : http://localhost:5174' && echo '' && vite",
     "server": "cd server && npm install && npm start",
     "server:dev": "cd server && npm install && npm run dev",
     "build": "vite build",
