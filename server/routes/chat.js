@@ -32,6 +32,11 @@ router.get('/conversations', (req, res) => {
     conditions.push('c.id IN (SELECT conversation_id FROM chat_participants WHERE user_id = ?)');
     params.push(user_id);
   }
+  // Partenaires : uniquement les conversations liées à leurs dossiers
+  if (req.user && req.user.role === 'partenaire') {
+    conditions.push('c.dossier_id IN (SELECT id FROM dossiers WHERE created_by = ?)');
+    params.push(req.user.id);
+  }
   if (dossier_id) {
     conditions.push('c.dossier_id = ?');
     params.push(dossier_id);
@@ -85,11 +90,13 @@ router.get('/conversations', (req, res) => {
 router.post('/conversations', (req, res) => {
   const { title, dossier_id, type, scope, participant_ids, created_by } = req.body;
   const now = new Date().toISOString();
+  // Partenaires : forcer scope externe
+  const finalScope = (req.user && req.user.role === 'partenaire') ? 'externe' : (scope || 'interne');
 
   req.db.run(
     `INSERT INTO chat_conversations (title, dossier_id, type, scope, created_by, created, updated)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [title || null, dossier_id || null, type || 'general', scope || 'interne', created_by, now, now],
+    [title || null, dossier_id || null, type || 'general', finalScope, created_by, now, now],
     function (err) {
       if (err) return res.status(500).json({ error: err.message });
       const convId = this.lastID;

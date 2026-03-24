@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const { authMiddleware, generateToken } = require('./middleware/auth');
+const { authMiddleware, generateToken, requireInternal } = require('./middleware/auth');
 const { router: emailRouter, seedTemplates, startEmailCron } = require('./routes/emails');
 const { router: documentsRouter, UPLOAD_ROOT } = require('./routes/documents');
 const { router: chatRouter } = require('./routes/chat');
@@ -244,6 +244,8 @@ db.serialize(() => {
     `ALTER TABLE users ADD COLUMN smtp_password TEXT`,
     // ── Chat : scope interne/externe ──
     `ALTER TABLE chat_conversations ADD COLUMN scope TEXT DEFAULT 'interne'`,
+    // ── Partenaire : traçabilité créateur ──
+    `ALTER TABLE dossiers ADD COLUMN created_by INTEGER`,
   ];
   migrations.forEach(sql => {
     db.run(sql, err => {
@@ -263,11 +265,11 @@ app.use(authMiddleware);
 
 // ── Email routes ──────────────────────────────────────────────────────────────
 
-app.use('/api/emails', emailRouter);
+app.use('/api/emails', requireInternal, emailRouter);
 
 // ── Document routes (GED) ─────────────────────────────────────────────────────
 
-app.use('/api/documents', documentsRouter);
+app.use('/api/documents', requireInternal, documentsRouter);
 
 // ── Chat routes ─────────────────────────────────────────────────────────────
 
@@ -275,7 +277,7 @@ app.use('/api/chat', chatRouter);
 
 // ── Dossiers ──────────────────────────────────────────────────────────────────
 
-const DOSSIER_COLS = 'id,client,client_org,email,phone,address,postal_code,dp_number,parcelle,works,status,assignee,created,updated,paid,amount,installed,docs,comments,avancement,client_access,client_token,siret,company_name,representant,kbis_address,ville,urbanisme_result';
+const DOSSIER_COLS = 'id,client,client_org,email,phone,address,postal_code,dp_number,parcelle,works,status,assignee,created,updated,paid,amount,installed,docs,comments,avancement,client_access,client_token,siret,company_name,representant,kbis_address,ville,urbanisme_result,created_by';
 
 function parseDossier(row) {
   return {
@@ -296,6 +298,11 @@ app.get('/api/dossiers', (req, res) => {
   let query = `SELECT ${DOSSIER_COLS} FROM dossiers`;
   const params = [];
   const conditions = [];
+  // Partenaires : uniquement leurs dossiers
+  if (req.user && req.user.role === 'partenaire') {
+    conditions.push('created_by = ?');
+    params.push(req.user.id);
+  }
   if (status)   { conditions.push('status = ?');                        params.push(status); }
   if (assignee) { conditions.push('assignee = ?');                      params.push(assignee); }
   if (search)   { conditions.push('(client LIKE ? OR email LIKE ? OR dp_number LIKE ?)'); const s = `%${search}%`; params.push(s,s,s); }
@@ -311,6 +318,9 @@ app.get('/api/dossiers/:id', (req, res) => {
   db.get(`SELECT ${DOSSIER_COLS} FROM dossiers WHERE id=?`, [req.params.id], (err, row) => {
     if (err) return res.status(500).json({ error: err.message });
     if (!row) return res.status(404).json({ error: 'Dossier introuvable' });
+    if (req.user && req.user.role === 'partenaire' && row.created_by !== req.user.id) {
+      return res.status(403).json({ error: 'Accès interdit' });
+    }
     res.json(parseDossier(row));
   });
 });
@@ -318,9 +328,10 @@ app.get('/api/dossiers/:id', (req, res) => {
 app.post('/api/dossiers', (req, res) => {
   const d = req.body;
   const now = new Date().toISOString();
+  const createdBy = req.user ? req.user.id : (d.created_by || null);
   db.run(
-    `INSERT INTO dossiers (id,client,client_org,email,phone,address,postal_code,dp_number,parcelle,works,status,assignee,created,updated,paid,amount,installed,docs,comments,avancement,client_access,client_token,siret,company_name,representant,kbis_address,ville,urbanisme_result)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO dossiers (id,client,client_org,email,phone,address,postal_code,dp_number,parcelle,works,status,assignee,created,updated,paid,amount,installed,docs,comments,avancement,client_access,client_token,siret,company_name,representant,kbis_address,ville,urbanisme_result,created_by)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [d.id, d.client, d.client_org||null, d.email||null, d.phone||null, d.address||null,
      d.postal_code||null, d.dp_number||null, d.parcelle||null,
      JSON.stringify(d.works||[]), d.status||'nouveau', d.assignee||null,
@@ -329,7 +340,8 @@ app.post('/api/dossiers', (req, res) => {
      JSON.stringify(d.docs||[]), JSON.stringify(d.comments||[]), JSON.stringify(d.avancement||{}),
      d.client_access?1:0, d.client_token||null,
      d.siret||null, d.company_name||null, d.representant||null, d.kbis_address||null,
-     d.ville||null, d.urbanisme_result?JSON.stringify(d.urbanisme_result):null],
+     d.ville||null, d.urbanisme_result?JSON.stringify(d.urbanisme_result):null,
+     createdBy],
     function(err) {
       if (err) return res.status(500).json({ error: err.message });
       res.json({ id: d.id, message: 'Dossier créé' });
@@ -338,6 +350,17 @@ app.post('/api/dossiers', (req, res) => {
 });
 
 app.put('/api/dossiers/:id', (req, res) => {
+  // Partenaires : vérifier ownership avant update
+  if (req.user && req.user.role === 'partenaire') {
+    return db.get('SELECT created_by FROM dossiers WHERE id=?', [req.params.id], (err, row) => {
+      if (err) return res.status(500).json({ error: err.message });
+      if (!row || row.created_by !== req.user.id) return res.status(403).json({ error: 'Accès interdit' });
+      doPutDossier(req, res);
+    });
+  }
+  doPutDossier(req, res);
+});
+function doPutDossier(req, res) {
   const d = req.body;
   const now = new Date().toISOString();
   db.run(
@@ -355,9 +378,12 @@ app.put('/api/dossiers/:id', (req, res) => {
       res.json({ message: 'Dossier mis à jour' });
     }
   );
-});
+}
 
 app.delete('/api/dossiers/:id', (req, res) => {
+  if (req.user && req.user.role === 'partenaire') {
+    return res.status(403).json({ error: 'Suppression non autorisée' });
+  }
   db.run('DELETE FROM dossiers WHERE id=?', [req.params.id], function(err) {
     if (err) return res.status(500).json({ error: err.message });
     res.json({ message: 'Dossier supprimé' });
@@ -367,6 +393,13 @@ app.delete('/api/dossiers/:id', (req, res) => {
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 app.get('/api/users', (req, res) => {
+  // Partenaires : ne voir que les utilisateurs internes (pour le chat) + eux-mêmes
+  if (req.user && req.user.role === 'partenaire') {
+    return db.all('SELECT id, name, initials, avatar, role FROM users WHERE role IN ("admin","superadmin","employee") OR id = ?', [req.user.id], (err, rows) => {
+      if (err) return res.status(500).json({ error: err.message });
+      res.json(rows);
+    });
+  }
   db.all('SELECT id, name, email, role, initials, avatar, CASE WHEN smtp_password IS NOT NULL AND smtp_password != \'\' THEN 1 ELSE 0 END as smtp_configured FROM users', [], (err, rows) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);

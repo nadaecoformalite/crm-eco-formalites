@@ -165,43 +165,56 @@ async function extractKbisData(file) {
     const text = raw
       .split('\n')
       .map(l => l.replace(/\s{2,}/g, ' ').trim())
+      .filter(l => l.length > 0)
       .join('\n');
 
-    // ── Helper : chercher la valeur qui suit un libellé sur la même ligne ou la suivante ──
+    const lines = text.split('\n');
+
+    // ── Helper : chercher la valeur qui suit un libellé ──
+    // Retourne UNIQUEMENT la valeur sur la même ligne (après le séparateur) ou la ligne suivante
     function after(labelPattern) {
-      // Tente d'abord "Libellé : valeur" sur la même ligne
-      const inline = new RegExp(labelPattern + '[\\s:–-]*([^\\n]{2,100})', 'i');
-      const m1 = text.match(inline);
-      if (m1) {
-        const v = m1[1].trim().replace(/^[:–\-\s]+/, '');
-        if (v.length > 1) return v;
+      for (let i = 0; i < lines.length; i++) {
+        const re = new RegExp(labelPattern, 'i');
+        if (!re.test(lines[i])) continue;
+        // Valeur après le label sur la même ligne (après : ou espace)
+        const inlineRe = new RegExp(labelPattern + '[\\s:;–\\-]*(.+)', 'i');
+        const m = lines[i].match(inlineRe);
+        if (m) {
+          const v = m[1].trim().replace(/^[:;–\-\s]+/, '');
+          if (v.length > 1) return v;
+        }
+        // Sinon prendre la ligne suivante
+        if (i + 1 < lines.length) {
+          const next = lines[i + 1].trim().replace(/^[:;–\-\s]+/, '');
+          if (next.length > 1) return next;
+        }
+        return null;
       }
-      // Sinon la valeur est sur la ligne suivante
-      const nextLine = new RegExp(labelPattern + '[^\\n]*\\n([^\\n]{2,100})', 'i');
-      const m2 = text.match(nextLine);
-      if (m2) return m2[1].trim().replace(/^[:–\-\s]+/, '');
       return null;
     }
 
     // ── 1. Dénomination sociale → Nom entreprise ──────────────────────────
-    const company_name =
+    let company_name =
       after('D[eé]nomination\\s+sociale') ||
       after('D[eé]nomination') ||
       after('Raison\\s+sociale') ||
       null;
+    if (company_name) {
+      // Retirer le préfixe "ou raison sociale" / "ou dénomination" qui traîne
+      company_name = company_name
+        .replace(/^.*(?:raison\s+sociale|d[eé]nomination\s+sociale?)\s*/i, '')
+        // Couper dès qu'un label de champ suivant apparaît
+        .replace(/\b(Forme\s+juridique|Forme|SIREN|SIRET|Capital|Adresse|Activit|Immatricul|Greffe|Date|Dur[eé]e|Enseigne|Sigle|Nom\s+commercial|Domiciliation|Num[eé]ro|N°|Objet).*/i, '')
+        .replace(/\.{2,}/g, '').replace(/\s{2,}/g, ' ').trim();
+    }
 
-    // ── 2. Immatriculation au RCS → SIRET / SIREN ────────────────────────
-    // Le KBIS mentionne "Immatriculation au RCS de VILLE" puis le numéro SIREN (9 chiffres)
-    // On accepte aussi le SIRET (14 chiffres) s'il est présent
+    // ── 2. SIRET / SIREN ────────────────────────────────────────────────
     let siret = null;
-    const rcsBlock = text.match(
-      /Immatriculation\s+au\s+RCS[^\n]{0,80}\n?([^\n]{0,80})/i
-    );
-    if (rcsBlock) {
-      // Cherche un numéro 9 ou 14 chiffres (avec espaces ou points éventuels)
-      const numM = (rcsBlock[0] + (rcsBlock[1] || '')).match(
-        /\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}(?:[\s.]?\d{5})?)\b/
-      );
+    // Cherche dans le bloc "Immatriculation au RCS"
+    const rcsIdx = lines.findIndex(l => /Immatriculation\s+au\s+RCS/i.test(l));
+    if (rcsIdx >= 0) {
+      const block = lines.slice(rcsIdx, rcsIdx + 3).join(' ');
+      const numM = block.match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}(?:[\s.]?\d{5})?)\b/);
       if (numM) {
         const digits = numM[1].replace(/[\s.]/g, '');
         if (digits.length === 14) {
@@ -211,7 +224,7 @@ async function extractKbisData(file) {
         }
       }
     }
-    // Fallback : chercher un SIRET 14 chiffres n'importe où dans le doc
+    // Fallback : SIRET 14 chiffres n'importe où
     if (!siret) {
       const fallback = text.match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s.]?\d{5})\b/);
       if (fallback) {
@@ -220,29 +233,95 @@ async function extractKbisData(file) {
       }
     }
 
-    // ── 3. Adresse du siège → adresse ────────────────────────────────────
-    const address =
+    // ── 3. Adresse du siège ─────────────────────────────────────────────
+    let address =
       after('Adresse\\s+du\\s+si[èe]ge\\s+social') ||
       after('Adresse\\s+du\\s+si[èe]ge') ||
       after('Si[èe]ge\\s+social') ||
       null;
+    // Nettoyage : ne garder que l'adresse (couper avant les champs suivants)
+    if (address) {
+      // Si l'adresse ne contient pas de code postal, concaténer la ligne suivante
+      if (address && !/\d{5}/.test(address)) {
+        const idx = lines.findIndex(l => /Si[èe]ge|Adresse\s+du\s+si[èe]ge/i.test(l));
+        if (idx >= 0 && idx + 2 < lines.length) {
+          const extra = lines[idx + 2].trim();
+          if (/\d{5}/.test(extra)) address = address + ' ' + extra;
+        }
+      }
+      address = address
+        // Couper dès qu'un label de champ suivant ou mot parasite apparaît
+        .replace(/\b(Domiciliation|Activit|Forme|Capital|Dur[eé]e|Date|Greffe|Immatricul|SIREN|SIRET|Repr[eé]sentant|G[eé]rant|Pr[eé]sident|Nom\s+ou|Enseigne|Objet|Description|en\s+commun).*/i, '')
+        .replace(/\.{2,}/g, '').replace(/\s{2,}/g, ' ').trim();
+    }
 
-    // ── 4. Représentant légal → représentant ─────────────────────────────
-    // Le KBIS liste les représentants sous "Représentant(s) légaux" ou détaille
-    // chaque personne avec "Gérant", "Président", "Directeur général", etc.
-    const representant =
-      after('Repr[eé]sentant(?:s)?\\s+l[eé]gaux?') ||
-      after('G[eé]rant') ||
-      after('Pr[eé]sident') ||
-      after('Directeur\\s+g[eé]n[eé]ral') ||
-      after('Dirigeant') ||
-      null;
+    // ── 4. Représentant légal → Nom Prénom uniquement ───────────────────
+    let representant = null;
+    // Chercher "Nom, prénoms" suivi du vrai nom (format KBIS courant)
+    const nomPrenomMatch = text.match(/Nom,?\s*pr[eé]noms?\s*[:\s]*([A-ZÀ-Ü]{2,}(?:[\s\-]+[A-ZÀ-Ü]{2,})*)\s+([A-ZÀ-Ü][a-zà-ü]+(?:[\s\-]+[A-ZÀ-Ü][a-zà-ü]+)*)/i);
+    if (nomPrenomMatch) {
+      representant = nomPrenomMatch[1] + ' ' + nomPrenomMatch[2];
+    }
 
-    // Nettoie les valeurs : retire les séquences de points (...), les tirets, etc.
-    const clean = v => v ? v.replace(/\.{2,}/g, '').replace(/^\W+/, '').trim() : null;
+    if (!representant) {
+      // Chercher les lignes contenant le rôle puis extraire le nom
+      const rolePatterns = [
+        /Repr[eé]sentant(?:s)?\s+l[eé]gaux?/i,
+        /G[eé]rant/i,
+        /Pr[eé]sident/i,
+        /Directeur\s+g[eé]n[eé]ral/i,
+        /Dirigeant/i,
+      ];
+      for (const rolePat of rolePatterns) {
+        const idx = lines.findIndex(l => rolePat.test(l));
+        if (idx < 0) continue;
+
+        // Chercher le nom dans les lignes proches (même ligne ou les 3 suivantes)
+        const block = lines.slice(idx, idx + 4).join('\n');
+
+        // Chercher "Nom, prénoms NOM Prénom" dans le bloc
+        const npMatch = block.match(/Nom,?\s*pr[eé]noms?\s*[:\s]*([A-ZÀ-Ü]{2,}(?:[\s\-]+[A-ZÀ-Ü]{2,})*)\s+([A-ZÀ-Ü][a-zà-ü]+(?:[\s\-]+[A-ZÀ-Ü][a-zà-ü]+)*)/i);
+        if (npMatch) { representant = npMatch[1] + ' ' + npMatch[2]; break; }
+
+        // Chercher "Civilité + Nom" (M. / Mme / Mr)
+        const civMatch = block.match(/\b(?:M[me.r]{0,3}|Madame|Monsieur)\s+([A-ZÀ-Ü][a-zà-ü]+(?:\s+[A-ZÀ-Ü][a-zà-ü]+)*(?:\s+[A-ZÀ-Ü]{2,})?)/);
+        if (civMatch) { representant = civMatch[1].trim(); break; }
+
+        // Pattern : "NOM Prénom" (NOM tout en majuscules)
+        const nameMatch = block.match(/\b([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,})*)\s+([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)\b/);
+        if (nameMatch) { representant = nameMatch[1] + ' ' + nameMatch[2]; break; }
+
+        // Fallback : prendre la ligne suivante si elle ressemble à un nom (2-4 mots, pas de chiffres)
+        if (idx + 1 < lines.length) {
+          const next = lines[idx + 1].trim().replace(/^[:;–\-\s]+/, '');
+          if (next && /^[A-ZÀ-Üa-zà-ü\s\-'.]{2,60}$/.test(next) && !/\d/.test(next) && next.split(/\s+/).length <= 5) {
+            representant = next;
+            break;
+          }
+        }
+      }
+    }
+    // Nettoyage final du représentant
+    if (representant) {
+      representant = representant
+        // Retirer préfixe "Nom, prénoms" résiduel
+        .replace(/^.*Nom,?\s*pr[eé]noms?\s*/i, '')
+        .replace(/\b(n[eé]e?\s+le|dat[eé]|depuis|nomm[eé]|Adresse|Activit|Forme|Capital|Greffe|Immatricul|SIREN|Nationalit|Domiciliation).*/i, '')
+        .replace(/,.*/, '')
+        .replace(/\.{2,}/g, '').replace(/\s{2,}/g, ' ').trim();
+    }
+
+    // ── Nettoyage global ────────────────────────────────────────────────
+    const clean = v => {
+      if (!v) return null;
+      let c = v.replace(/\.{2,}/g, '').replace(/^\W+/, '').replace(/\s{2,}/g, ' ').trim();
+      // Retirer si le résultat est trop court ou ne contient que des caractères spéciaux
+      if (c.length < 2 || /^[\W\d]+$/.test(c)) return null;
+      return c;
+    };
 
     return {
-      siret:        clean(siret),
+      siret:        siret || null,
       company_name: clean(company_name),
       address:      clean(address),
       representant: clean(representant),
@@ -566,6 +645,98 @@ function DropZone({ dossierId, category, onUploaded, onExtracted }) {
   );
 }
 
+// ── Document thumbnail (grid card) ───────────────────────────────────────────
+
+function DocCard({ doc, onPreview, onEdit, onDelete, onVersions }) {
+  const isPdf = (doc.mime_type || '').includes('pdf') || (doc.original_name || doc.name || '').toLowerCase().endsWith('.pdf');
+  const isImage = doc.mime_type?.startsWith('image/');
+  const cat = catMap[doc.category] || catMap.autre;
+  const canvasRef = useRef(null);
+  const [thumbLoaded, setThumbLoaded] = useState(false);
+
+  // Generate PDF thumbnail
+  useEffect(() => {
+    if (!isPdf || !canvasRef.current) return;
+    const url = `${API_BASE}${doc.url}`;
+    pdfjsLib.getDocument(url).promise.then(pdf => {
+      pdf.getPage(1).then(page => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const viewport = page.getViewport({ scale: 0.5 });
+        const ratio = 180 / viewport.width;
+        const scaledViewport = page.getViewport({ scale: ratio });
+        canvas.width = scaledViewport.width;
+        canvas.height = scaledViewport.height;
+        page.render({ canvasContext: canvas.getContext('2d'), viewport: scaledViewport }).promise
+          .then(() => setThumbLoaded(true));
+      });
+    }).catch(() => {});
+  }, [isPdf, doc.url]);
+
+  return (
+    <div style={{ background: 'var(--bg2)', border: '1.5px solid var(--bd)', borderRadius: 'var(--rl)',
+      overflow: 'hidden', transition: 'all .2s', cursor: 'pointer', boxShadow: 'var(--sh)',
+      display: 'flex', flexDirection: 'column' }}
+      onClick={() => onPreview(doc)}
+      onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--shm)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
+      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'var(--sh)'; e.currentTarget.style.transform = 'none'; }}>
+      {/* Thumbnail area */}
+      <div style={{ height: 140, background: '#1a1a18', display: 'flex', alignItems: 'center',
+        justifyContent: 'center', overflow: 'hidden', position: 'relative' }}>
+        {isImage ? (
+          <img src={`${API_BASE}${doc.url}`} alt={doc.name}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : isPdf ? (
+          <>
+            <canvas ref={canvasRef} style={{ maxWidth: '100%', maxHeight: '100%', display: thumbLoaded ? 'block' : 'none' }} />
+            {!thumbLoaded && <FileIcon mime={doc.mime_type} size={48} />}
+          </>
+        ) : (
+          <FileIcon mime={doc.mime_type} size={48} />
+        )}
+        {/* Category badge */}
+        <span style={{ position: 'absolute', top: 6, left: 6, fontSize: 9, fontWeight: 700,
+          color: cat.color, background: cat.bg, padding: '2px 7px', borderRadius: 6,
+          border: `1px solid ${cat.color}30` }}>
+          {cat.icon} {cat.label}
+        </span>
+        {doc.version > 1 && (
+          <span style={{ position: 'absolute', top: 6, right: 6, fontSize: 9, fontWeight: 700,
+            color: 'var(--or)', background: 'var(--or-l)', padding: '2px 6px', borderRadius: 6 }}>
+            v{doc.version}
+          </span>
+        )}
+      </div>
+      {/* Info */}
+      <div style={{ padding: '10px 12px', flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ fontWeight: 600, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap', color: 'var(--tx)' }}>
+          {doc.original_name || doc.name}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: 'var(--tx4)' }}>
+          <span>{doc.size_human}</span>
+          <span>{new Date(doc.created).toLocaleDateString('fr-FR')}</span>
+        </div>
+      </div>
+      {/* Actions */}
+      <div style={{ padding: '6px 10px 10px', display: 'flex', gap: 4, borderTop: '1px solid var(--bd)' }}
+        onClick={e => e.stopPropagation()}>
+        <button className="bic" title="Aperçu" onClick={() => onPreview(doc)}
+          style={{ width: 26, height: 26, fontSize: 11, flex: 1 }}>👁</button>
+        {isPdf && <button className="bic" title="Éditer" onClick={() => onEdit(doc)}
+          style={{ width: 26, height: 26, fontSize: 11, flex: 1, color: 'var(--or)' }}>✏️</button>}
+        <a href={`${API_BASE}${doc.url}`} download={doc.original_name || doc.name}
+          className="bic" title="Télécharger"
+          style={{ width: 26, height: 26, fontSize: 11, flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⬇</a>
+        <button className="bic" title="Versions" onClick={() => onVersions(doc)}
+          style={{ width: 26, height: 26, fontSize: 11, flex: 1 }}>🕐</button>
+        <button className="bic" title="Supprimer" onClick={() => onDelete(doc)}
+          style={{ width: 26, height: 26, fontSize: 11, flex: 1, color: 'var(--re)' }}>🗑</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Document row ──────────────────────────────────────────────────────────────
 
 function DocRow({ doc, onPreview, onEdit, onDelete, onVersions, onRename }) {
@@ -638,6 +809,7 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
   const [extractedBanner, setExtractedBanner] = useState(null); // { data, dossierId }
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState(null);
+  const [viewMode, setViewMode] = useState('grid'); // 'list' | 'grid'
 
   const effectiveDossierId = dossierId || selectedDossier;
 
@@ -759,8 +931,8 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
         </div>
       )}
 
-      {/* Category filter pills */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14 }}>
+      {/* Category filter pills + view toggle */}
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
         <button className={`btn btn-sm ${category === 'all' ? 'btn-p' : 'btn-s'}`}
           onClick={() => setCategory('all')} style={{ fontSize: 11 }}>
           Tous {documents.length > 0 && `(${documents.length})`}
@@ -778,6 +950,19 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
             </button>
           );
         })}
+        {/* View mode toggle */}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, flexShrink: 0 }}>
+          <button className="dtog" title="Vue grille"
+            onClick={() => setViewMode('grid')}
+            style={viewMode === 'grid' ? { background: 'var(--or)', color: '#fff', borderColor: 'var(--or)' } : {}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </button>
+          <button className="dtog" title="Vue liste"
+            onClick={() => setViewMode('list')}
+            style={viewMode === 'list' ? { background: 'var(--or)', color: '#fff', borderColor: 'var(--or)' } : {}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+          </button>
+        </div>
       </div>
 
       {/* Extraction banner */}
@@ -855,17 +1040,40 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
                 <span style={{ background: 'var(--or-l)', color: 'var(--or)',
                   borderRadius: 20, padding: '1px 8px', fontSize: 10, fontWeight: 700 }}>{docs.length}</span>
               </div>
-              {docs.map(doc => (
-                <DocRow key={doc.id} doc={doc}
-                  onPreview={setPreviewing}
-                  onEdit={setEditing}
-                  onDelete={handleDelete}
-                  onVersions={setVersioning}
-                  onRename={() => {}} />
-              ))}
+              {viewMode === 'grid' ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
+                  {docs.map(doc => (
+                    <DocCard key={doc.id} doc={doc}
+                      onPreview={setPreviewing}
+                      onEdit={setEditing}
+                      onDelete={handleDelete}
+                      onVersions={setVersioning} />
+                  ))}
+                </div>
+              ) : (
+                docs.map(doc => (
+                  <DocRow key={doc.id} doc={doc}
+                    onPreview={setPreviewing}
+                    onEdit={setEditing}
+                    onDelete={handleDelete}
+                    onVersions={setVersioning}
+                    onRename={() => {}} />
+                ))
+              )}
             </div>
           );
         })
+      ) : viewMode === 'grid' ? (
+        // Grid for single category
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
+          {filteredDocs.map(doc => (
+            <DocCard key={doc.id} doc={doc}
+              onPreview={setPreviewing}
+              onEdit={setEditing}
+              onDelete={handleDelete}
+              onVersions={setVersioning} />
+          ))}
+        </div>
       ) : (
         // Flat list for single category
         filteredDocs.map(doc => (

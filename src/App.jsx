@@ -43,6 +43,7 @@ const INIT_USERS = [
   {id:1,name:"Super Admin",email:"superadmin@crm.fr",password:"admin2024",role:"superadmin",initials:"SA",avatar:null},
   {id:2,name:"Admin",email:"admin@crm.fr",password:"admin123",role:"admin",initials:"AD",avatar:null},
   {id:3,name:"Sarah",email:"sarah@crm.fr",password:"sarah123",role:"employee",initials:"SR",avatar:null},
+  {id:4,name:"BTS Partenaire",email:"partenaire@test.fr",password:"part123",role:"partenaire",initials:"BP",avatar:null},
 ];
 
 const INIT_CLIENTS_ORG = [
@@ -144,23 +145,123 @@ async function extractDP(file){
 async function extractKbis(file){
   try{
     const raw=await extractTextUniversal(file,2);
-    const text=raw.split("\n").map(l=>l.replace(/\s{2,}/g," ").trim()).join("\n");
+    const lines=raw.split("\n").map(l=>l.replace(/\s{2,}/g," ").trim()).filter(l=>l.length>0);
+    const text=lines.join("\n");
+
+    // Helper : cherche la valeur après un label (même ligne ou ligne suivante)
     function after(lbl){
-      const m1=text.match(new RegExp(lbl+"[\\s:–-]*([^\\n]{2,100})","i"));
-      if(m1){const v=m1[1].trim().replace(/^[:–\-\s]+/,"");if(v.length>1)return v;}
-      const m2=text.match(new RegExp(lbl+"[^\\n]*\\n([^\\n]{2,100})","i"));
-      if(m2)return m2[1].trim().replace(/^[:–\-\s]+/,"");
+      for(let i=0;i<lines.length;i++){
+        if(!new RegExp(lbl,"i").test(lines[i]))continue;
+        const m=lines[i].match(new RegExp(lbl+"[\\s:;–\\-]*(.+)","i"));
+        if(m){const v=m[1].trim().replace(/^[:;–\-\s]+/,"");if(v.length>1)return v;}
+        if(i+1<lines.length){const n=lines[i+1].trim().replace(/^[:;–\-\s]+/,"");if(n.length>1)return n;}
+        return null;
+      }
       return null;
     }
-    const company_name=after("D[eé]nomination\\s+sociale")||after("D[eé]nomination")||after("Raison\\s+sociale")||null;
+
+    // ── 1. Nom entreprise (dénomination uniquement) ──
+    let company_name=after("D[eé]nomination\\s+sociale")||after("D[eé]nomination")||after("Raison\\s+sociale")||null;
+    if(company_name){
+      company_name=company_name
+        .replace(/^.*(?:raison\s+sociale|d[eé]nomination\s+sociale?)\s*/i,"")
+        .replace(/\b(Forme\s+juridique|Forme|SIREN|SIRET|Capital|Adresse|Activit|Immatricul|Greffe|Date|Dur[eé]e|Enseigne|Sigle|Nom\s+commercial|Domiciliation|Num[eé]ro|N°|Objet|Soci[eé]t[eé]\s+par).*/i,"")
+        .replace(/\.{2,}/g,"").replace(/\s{2,}/g," ").trim();
+    }
+
+    // ── 2. SIRET via annuaire-entreprises.data.gouv.fr (recherche par nom) ──
     let siret=null;
-    const rcsBlock=text.match(/Immatriculation\s+au\s+RCS[^\n]{0,80}\n?([^\n]{0,80})/i);
-    if(rcsBlock){const numM=(rcsBlock[0]+(rcsBlock[1]||"")).match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}(?:[\s.]?\d{5})?)\b/);if(numM){const d=numM[1].replace(/[\s.]/g,"");if(d.length===14)siret=d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4");else if(d.length===9)siret=d.replace(/(\d{3})(\d{3})(\d{3})/,"$1 $2 $3");}}
+    let apiAdresse=null;
+    let apiRepresentant=null;
+    const norm=s=>(s||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+    if(company_name){
+      try{
+        const res=await fetch(`https://recherche-entreprises.api.gouv.fr/search?q=${encodeURIComponent(company_name)}&page=1&per_page=3`);
+        if(res.ok){
+          const json=await res.json();
+          const hit=(json.results||[]).find(r=>norm(r.nom_complet)===norm(company_name))||(json.results||[])[0];
+          if(hit?.siege?.siret){
+            const d=hit.siege.siret.replace(/[\s.]/g,"");
+            siret=d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4");
+            if(hit.siege.geo_adresse)apiAdresse=hit.siege.geo_adresse;
+            // Dirigeant depuis l'API
+            const dir=hit.dirigeants?.find(d=>d.type_dirigeant==="personne physique");
+            if(dir){
+              const prenom=(dir.prenoms||"").split(" ").map(w=>w.charAt(0).toUpperCase()+w.slice(1).toLowerCase()).join(" ");
+              const nom=(dir.nom||"").charAt(0).toUpperCase()+(dir.nom||"").slice(1).toLowerCase();
+              apiRepresentant=(prenom+" "+nom).trim();
+            }
+          }
+        }
+      }catch{}
+    }
+    // Fallback : extraction depuis le texte du KBIS si l'API n'a rien donné
+    if(!siret){
+      const rcsIdx=lines.findIndex(l=>/Immatriculation\s+au\s+RCS|RCS\s|SIREN/i.test(l));
+      if(rcsIdx>=0){
+        const block=lines.slice(rcsIdx,rcsIdx+3).join(" ");
+        const numM=block.match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s.]?\d{5})\b/)||block.match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3})\b/);
+        if(numM){const d=numM[1].replace(/[\s.]/g,"");
+          if(d.length===14)siret=d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4");
+          else if(d.length===9)siret=d.replace(/(\d{3})(\d{3})(\d{3})/,"$1 $2 $3");
+        }
+      }
+    }
     if(!siret){const fb=text.match(/\b(\d{3}[\s.]?\d{3}[\s.]?\d{3}[\s.]?\d{5})\b/);if(fb){const d=fb[1].replace(/[\s.]/g,"");siret=d.replace(/(\d{3})(\d{3})(\d{3})(\d{5})/,"$1 $2 $3 $4");}}
-    const address=after("Adresse\\s+du\\s+si[èe]ge\\s+social")||after("Adresse\\s+du\\s+si[èe]ge")||after("Si[èe]ge\\s+social")||null;
-    const representant=after("Repr[eé]sentant(?:s)?\\s+l[eé]gaux?")||after("G[eé]rant")||after("Pr[eé]sident")||after("Directeur\\s+g[eé]n[eé]ral")||null;
-    const clean=v=>v?v.replace(/\.{2,}/g,"").replace(/^\W+/,"").trim():null;
-    return {siret:clean(siret),company_name:clean(company_name),address:clean(address),representant:clean(representant)};
+
+    // ── 3. Adresse du siège uniquement ──
+    let address=after("Adresse\\s+du\\s+si[èe]ge\\s+social")||after("Adresse\\s+du\\s+si[èe]ge")||after("Si[èe]ge\\s+social")||null;
+    if(address){
+      // Si pas de code postal, concaténer la ligne suivante
+      if(!/\d{5}/.test(address)){
+        const idx=lines.findIndex(l=>/Si[èe]ge|Adresse\s+du\s+si[èe]ge/i.test(l));
+        if(idx>=0&&idx+2<lines.length){const extra=lines[idx+2].trim();if(/\d{5}/.test(extra))address=address+" "+extra;}
+      }
+      address=address
+        .replace(/\b(Domiciliation|Activit|Forme|Capital|Dur[eé]e|Date|Greffe|Immatricul|SIREN|SIRET|Repr[eé]sentant|G[eé]rant|Pr[eé]sident|Nom\s+ou|Enseigne|Objet|Description|en\s+commun|Transfert).*/i,"")
+        .replace(/\.{2,}/g,"").replace(/\s{2,}/g," ").trim();
+    }
+
+    // ── 4. Représentant : Prénom Nom uniquement ──
+    let representant=null;
+    // Chercher "Nom, prénoms NAKACHE Aaron" → extraire NOM + Prénom
+    const npMatch=text.match(/Nom,?\s*pr[eé]noms?\s*[:\s]*([A-ZÀ-Ü]{2,}(?:[\s\-]+[A-ZÀ-Ü]{2,})*)\s+([A-ZÀ-Ü][a-zà-ü]+(?:[\s\-]+[A-ZÀ-Ü][a-zà-ü]+)*)/i);
+    if(npMatch){representant=npMatch[2]+" "+npMatch[1];} // Prénom NOM
+
+    if(!representant){
+      const roles=[/Repr[eé]sentant(?:s)?\s+l[eé]gaux?/i,/G[eé]rant/i,/Pr[eé]sident/i,/Directeur\s+g[eé]n[eé]ral/i,/Dirigeant/i];
+      for(const rp of roles){
+        const idx=lines.findIndex(l=>rp.test(l));
+        if(idx<0)continue;
+        const block=lines.slice(idx,idx+4).join("\n");
+        // "Nom, prénoms" dans le bloc
+        const np2=block.match(/Nom,?\s*pr[eé]noms?\s*[:\s]*([A-ZÀ-Ü]{2,}(?:[\s\-]+[A-ZÀ-Ü]{2,})*)\s+([A-ZÀ-Ü][a-zà-ü]+(?:[\s\-]+[A-ZÀ-Ü][a-zà-ü]+)*)/i);
+        if(np2){representant=np2[2]+" "+np2[1];break;}
+        // Civilité + Nom
+        const civ=block.match(/\b(?:M[me.r]{0,3}|Madame|Monsieur)\s+([A-ZÀ-Ü][a-zà-ü]+(?:\s+[A-ZÀ-Ü][a-zà-ü]+)*(?:\s+[A-ZÀ-Ü]{2,})?)/);
+        if(civ){representant=civ[1].trim();break;}
+        // NOM Prénom (majuscules)
+        const nm=block.match(/\b([A-ZÀ-Ü]{2,}(?:\s+[A-ZÀ-Ü]{2,})*)\s+([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)\b/);
+        if(nm){representant=nm[2]+" "+nm[1];break;}
+        // Fallback ligne suivante
+        if(idx+1<lines.length){const n=lines[idx+1].trim().replace(/^[:;–\-\s]+/,"");
+          if(n&&/^[A-ZÀ-Üa-zà-ü\s\-'.]{2,60}$/.test(n)&&!/\d/.test(n)&&n.split(/\s+/).length<=5){representant=n;break;}}
+      }
+    }
+    if(representant){
+      representant=representant
+        .replace(/^.*Nom,?\s*pr[eé]noms?\s*/i,"")
+        .replace(/\b(n[eé]e?\s+le|dat[eé]|depuis|nomm[eé]|Adresse|Activit|Forme|Capital|Greffe|Immatricul|SIREN|Nationalit|Domiciliation).*/i,"")
+        .replace(/,.*/,"").replace(/\.{2,}/g,"").replace(/\s{2,}/g," ").trim();
+    }
+
+    // Utiliser les données API en priorité pour adresse et représentant si le PDF n'a rien donné de propre
+    if(!address&&apiAdresse)address=apiAdresse;
+    if(!representant&&apiRepresentant)representant=apiRepresentant;
+
+    const clean=v=>{if(!v)return null;let c=v.replace(/\.{2,}/g,"").replace(/^\W+/,"").replace(/\s{2,}/g," ").trim();return(c.length<2||/^[\W\d]+$/.test(c))?null:c;};
+    // Ne pas passer siret dans clean() car il ne contient que des chiffres/espaces
+    return {siret:siret||null,company_name:clean(company_name),address:clean(address)||apiAdresse,representant:clean(representant)||apiRepresentant};
   }catch{return null;}
 }
 
@@ -1321,7 +1422,7 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
     return mq&&ms&&ma&&mw&&mf&&mn&&mcd&&mud;
   }),[dossiers,globalQ,globalFilters]);
 
-  const create=d=>{const nd={...d,id:dossierId(d.dp_number,d.id)};setDossiers(p=>[nd,...p]);setCreating(false);toast("Dossier cree !","s");};
+  const create=d=>{const nd={...d,id:dossierId(d.dp_number,d.id),created_by:currentUser.id};setDossiers(p=>[nd,...p]);setCreating(false);toast("Dossier cree !","s");};
   const upd=d=>{
     // Si l'ID a changé (DP extrait → nouvel ID), on retrouve l'ancien via _oldId
     const lookupId=d._oldId||d.id;
@@ -1598,9 +1699,9 @@ function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
       <button className="btn btn-p" onClick={()=>{setEditC(null);setF({name:"",address:"",siret:"",representant:"",email:""});setCreating(true);}}><Ic n="plus" s={13}/>Ajouter partenaire</button>
     </div>
     <div className="srw" style={{marginBottom:14}}><span className="srw-ic"><Ic n="search" s={13}/></span><input className="srch" placeholder="Nom, SIRET..." value={q} onChange={e=>setQ(e.target.value)}/></div>
-    {creating&&<div className="ov" onClick={e=>e.target===e.currentTarget&&setCreating(false)}>
+    {creating&&<div className="ov" onClick={e=>{if(e.target===e.currentTarget){setCreating(false);setEditC(null);setF({name:"",address:"",siret:"",representant:"",email:""});setScan(false);setKbR(null);}}}>
       <div className="modal" style={{maxWidth:580}}>
-        <div className="mhdr"><h2 style={{fontSize:16,fontWeight:800}}>{editC?"Modifier":"Nouveau partenaire"}</h2><button className="bic" onClick={()=>setCreating(false)}><Ic n="x"/></button></div>
+        <div className="mhdr"><h2 style={{fontSize:16,fontWeight:800}}>{editC?"Modifier":"Nouveau partenaire"}</h2><button className="bic" onClick={()=>{setCreating(false);setEditC(null);setF({name:"",address:"",siret:"",representant:"",email:""});setScan(false);setKbR(null);}}><Ic n="x"/></button></div>
         <div className="mbdy">
           {/* KBIS extraction */}
           <div style={{background:"var(--or-l)",border:"1.5px solid rgba(232,80,26,.25)",borderRadius:"var(--rl)",padding:14,marginBottom:16}}>
@@ -1632,7 +1733,7 @@ function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
             <div className="fg" style={{gridColumn:"1/-1"}}><label className="lbl">Email</label><input type="email" value={f.email} onChange={e=>setF(x=>({...x,email:e.target.value}))}/></div>
           </div>
         </div>
-        <div className="mftr"><button className="btn btn-s" onClick={()=>setCreating(false)}>Annuler</button><button className="btn btn-p" onClick={save}><Ic n="check" s={13}/>Sauvegarder</button></div>
+        <div className="mftr"><button className="btn btn-s" onClick={()=>{setCreating(false);setEditC(null);setF({name:"",address:"",siret:"",representant:"",email:""});setScan(false);setKbR(null);}}>Annuler</button><button className="btn btn-p" onClick={save}><Ic n="check" s={13}/>Sauvegarder</button></div>
       </div>
     </div>}
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:11}}>
@@ -1656,30 +1757,165 @@ function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
 }
 
 // ── PAIEMENTS ──
-function Paiements({dossiers,setDossiers,currentUser,toast}){
+function Paiements({dossiers,setDossiers,currentUser,toast,clientsOrg=[],users=[]}){
+  const isSA=currentUser.role==="superadmin";
   const unpaid=dossiers.filter(d=>!d.paid);const paid=dossiers.filter(d=>d.paid);
-  const mark=id=>{setDossiers(p=>p.map(d=>d.id===id?{...d,paid:true}:d));toast("Paiement valide !","s");};
+  const mark=(id)=>{setDossiers(p=>p.map(d=>d.id===id?{...d,paid:true}:d));toast("Paiement validé","s");};
+  const markAll=(ids)=>{setDossiers(p=>p.map(d=>ids.includes(d.id)?{...d,paid:true}:d));toast(ids.length+" dossier(s) marqués payés","s");};
+
+  // ── Regrouper par partenaire (client_org) et périodes de 3 semaines ──
+  const THREE_WEEKS=21*24*60*60*1000;
+  const now=Date.now();
+
+  // Trouver les partenaires ayant des dossiers
+  const partnerMap={};
+  dossiers.forEach(d=>{
+    const org=d.client_org||"Sans partenaire";
+    if(!partnerMap[org])partnerMap[org]={name:org,dossiers:[],unpaid:[],paid:[],totalDue:0,totalPaid:0};
+    partnerMap[org].dossiers.push(d);
+    if(d.paid){partnerMap[org].paid.push(d);partnerMap[org].totalPaid+=(d.amount||0);}
+    else{partnerMap[org].unpaid.push(d);partnerMap[org].totalDue+=(d.amount||0);}
+  });
+  const partners=Object.values(partnerMap).sort((a,b)=>b.totalDue-a.totalDue);
+
+  // Regrouper les dossiers impayés par période de 3 semaines
+  const groupByPeriod=(docs)=>{
+    const periods={};
+    docs.forEach(d=>{
+      const created=new Date(d.created||d.updated||now).getTime();
+      const weeksAgo=Math.floor((now-created)/THREE_WEEKS);
+      const periodStart=new Date(now-((weeksAgo+1)*THREE_WEEKS));
+      const periodEnd=new Date(now-(weeksAgo*THREE_WEEKS));
+      const key=weeksAgo;
+      if(!periods[key])periods[key]={start:periodStart,end:periodEnd,dossiers:[],total:0,label:weeksAgo===0?"Période en cours (3 dernières semaines)":weeksAgo===1?"Semaine 4 à 6":"Il y a "+(weeksAgo*3+1)+" à "+((weeksAgo+1)*3)+" semaines"};
+      periods[key].dossiers.push(d);
+      periods[key].total+=(d.amount||0);
+    });
+    return Object.values(periods).sort((a,b)=>a.start-b.start);
+  };
+
+  // ── Envoi email lien de paiement ──
+  const [sending,setSending]=useState(null);
+  const sendPaymentLink=async(partner)=>{
+    // Trouver l'email du partenaire
+    const orgData=clientsOrg.find(c=>c.name===partner.name);
+    const partnerUser=users.find(u=>u.role==="partenaire"&&u.name===partner.name);
+    const email=orgData?.email||partnerUser?.email;
+    if(!email){toast("Aucun email trouvé pour "+partner.name,"e");return;}
+
+    setSending(partner.name);
+    const dossierLines=partner.unpaid.map(d=>"  - "+d.client+" ("+d.id+") : "+(d.amount||0).toLocaleString("fr-FR")+" €").join("\n");
+    const total=partner.totalDue.toLocaleString("fr-FR");
+    const subject="Eco-formalités — Paiement en attente : "+total+" €";
+    const body=`Bonjour,\n\nVous avez ${partner.unpaid.length} dossier(s) en attente de paiement pour un total de ${total} € :\n\n${dossierLines}\n\nMerci de procéder au règlement dans les meilleurs délais.\n\nCordialement,\nEco-formalités`;
+
+    try{
+      const API_URL=import.meta.env.VITE_API_URL||'http://localhost:3001/api';
+      const token=localStorage.getItem('auth_token');
+      const res=await fetch(API_URL+'/emails/send',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify({to:email,to_name:partner.name,subject,body_html:body.replace(/\n/g,'<br>'),body_text:body,from_email:currentUser.email,from_name:currentUser.name})});
+      if(res.ok)toast("Lien de paiement envoyé à "+email,"s");
+      else{const e=await res.json().catch(()=>({}));toast(e.error||"Erreur d'envoi","e");}
+    }catch(e){
+      // Fallback mailto
+      const mailtoUrl="mailto:"+email+"?subject="+encodeURIComponent(subject)+"&body="+encodeURIComponent(body);
+      window.open(mailtoUrl);
+      toast("Ouverture du client mail pour "+email,"s");
+    }
+    setSending(null);
+  };
+
+  const [expandedPartner,setExpandedPartner]=useState(null);
+
   return <div>
-    <h2 style={{fontSize:19,fontWeight:800,marginBottom:16}}>Paiements</h2>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:11,marginBottom:16}}>
-      {[{l:"Encaisse",v:paid.reduce((s,d)=>s+(d.amount||0),0).toLocaleString("fr-FR")+" €",c:"var(--gr)"},{l:"En attente",v:unpaid.reduce((s,d)=>s+(d.amount||0),0).toLocaleString("fr-FR")+" €",c:"var(--or)"},{l:"Payes",v:paid.length,c:"var(--bl)"},{l:"Impayes",v:unpaid.length,c:"var(--re)"}].map((s,i)=><div key={i} className="scard" style={{"--sc":s.c}}><div style={{fontSize:typeof s.v==="string"?14:26,fontWeight:800,lineHeight:1,marginBottom:3,color:s.c}}>{s.v}</div><div style={{fontSize:11,color:"var(--tx3)"}}>{s.l}</div></div>)}
-    </div>
-    <div className="card" style={{marginBottom:12}}>
-      <h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>En attente</h3>
-      {!unpaid.length&&<p style={{color:"var(--tx4)",fontSize:12}}>Tout est a jour 🎉</p>}
-      {unpaid.map(d=><div key={d.id} style={{display:"flex",alignItems:"center",gap:11,padding:"10px 0",borderBottom:"1px solid var(--bd)",flexWrap:"wrap"}}>
-        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{d.client}</div><div style={{fontSize:10,color:"var(--tx4)"}}>{d.id}</div></div>
-        <div style={{fontWeight:800,fontSize:16,color:"var(--or)"}}>{(d.amount||0).toLocaleString("fr-FR")} €</div>
-        <button className="btn btn-s btn-sm" onClick={()=>toast("Lien envoye","i")}><Ic n="mail" s={10}/>Lien</button>
-        {currentUser.role==="superadmin"&&<button className="btn btn-g btn-sm" onClick={()=>mark(d.id)}><Ic n="check" s={10}/>Valider</button>}
+    <h2 style={{fontSize:19,fontWeight:800,marginBottom:4}}>Paiements</h2>
+    <p style={{fontSize:12,color:"var(--tx3)",marginBottom:16}}>Suivi des paiements par partenaire — regroupement par périodes de 3 semaines</p>
+
+    {/* ── Stats globales ── */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:11,marginBottom:20}}>
+      {[
+        {l:"Total encaissé",v:paid.reduce((s,d)=>s+(d.amount||0),0).toLocaleString("fr-FR")+" €",c:"var(--gr)",bg:"var(--gr-l)"},
+        {l:"Total en attente",v:unpaid.reduce((s,d)=>s+(d.amount||0),0).toLocaleString("fr-FR")+" €",c:"var(--re)",bg:"var(--re-l)"},
+        {l:"Dossiers payés",v:paid.length+"",c:"var(--gr)",bg:"var(--gr-l)"},
+        {l:"Dossiers impayés",v:unpaid.length+"",c:"var(--re)",bg:"var(--re-l)"},
+        {l:"Partenaires",v:partners.filter(p=>p.totalDue>0).length+"",c:"var(--or)",bg:"var(--or-l)"},
+      ].map((s,i)=><div key={i} style={{padding:"14px 16px",borderRadius:"var(--rl)",background:s.bg,border:"1.5px solid "+s.c+"25"}}>
+        <div style={{fontSize:20,fontWeight:800,color:s.c,marginBottom:2}}>{s.v}</div>
+        <div style={{fontSize:11,color:s.c,fontWeight:600,opacity:.8}}>{s.l}</div>
       </div>)}
     </div>
-    <div className="card">
-      <h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>Payes</h3>
-      {paid.map(d=><div key={d.id} style={{display:"flex",alignItems:"center",gap:11,padding:"9px 0",borderBottom:"1px solid var(--bd)"}}>
-        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{d.client}</div><div style={{fontSize:10,color:"var(--tx4)"}}>{d.id}</div></div>
-        <div style={{fontWeight:700,color:"var(--gr)",fontSize:14}}>{(d.amount||0).toLocaleString("fr-FR")} €</div>
-        <span style={{color:"var(--gr)",fontSize:10,fontWeight:700,background:"var(--gr-l)",padding:"2px 8px",borderRadius:20}}>✓ Paye</span>
+
+    {/* ── Par partenaire : EN ATTENTE ── */}
+    <div style={{marginBottom:24}}>
+      <h3 style={{fontSize:15,fontWeight:800,color:"var(--re)",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+        <span style={{width:8,height:8,borderRadius:"50%",background:"var(--re)",display:"inline-block"}}/>
+        Paiements en attente
+      </h3>
+      {partners.filter(p=>p.totalDue>0).length===0&&<div className="card" style={{textAlign:"center",padding:30,color:"var(--tx4)",fontSize:13}}>Aucun paiement en attente</div>}
+      {partners.filter(p=>p.totalDue>0).map(p=>{
+        const periods=groupByPeriod(p.unpaid);
+        const isExpanded=expandedPartner===p.name;
+        return <div key={p.name} className="card" style={{marginBottom:12,border:"1.5px solid var(--re)30",overflow:"hidden"}}>
+          {/* Header partenaire */}
+          <div style={{display:"flex",alignItems:"center",gap:12,cursor:"pointer",padding:"2px 0"}} onClick={()=>setExpandedPartner(isExpanded?null:p.name)}>
+            <div style={{width:40,height:40,borderRadius:11,background:"var(--re-l)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:14,color:"var(--re)",flexShrink:0}}>
+              {p.name[0]}
+            </div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:800,fontSize:14}}>{p.name}</div>
+              <div style={{fontSize:11,color:"var(--tx3)"}}>{p.unpaid.length} dossier{p.unpaid.length>1?"s":""} impayé{p.unpaid.length>1?"s":""}</div>
+            </div>
+            <div style={{textAlign:"right",marginRight:8}}>
+              <div style={{fontWeight:800,fontSize:20,color:"var(--re)"}}>{p.totalDue.toLocaleString("fr-FR")} €</div>
+              <div style={{fontSize:10,color:"var(--tx4)"}}>dû au total</div>
+            </div>
+            {isSA&&<button className="btn btn-sm" style={{background:"var(--or)",color:"#fff",border:"none",gap:5,flexShrink:0}} onClick={e=>{e.stopPropagation();sendPaymentLink(p);}} disabled={sending===p.name}>
+              <Ic n="mail" s={11} c="#fff"/>{sending===p.name?"Envoi...":"Lien de paiement"}
+            </button>}
+            {isSA&&<button className="btn btn-sm" style={{background:"var(--gr)",color:"#fff",border:"none",gap:5,flexShrink:0}} onClick={e=>{e.stopPropagation();markAll(p.unpaid.map(d=>d.id));}}>
+              <Ic n="check" s={11} c="#fff"/>Tout valider
+            </button>}
+            <span style={{fontSize:16,color:"var(--tx4)",transition:".2s",transform:isExpanded?"rotate(180deg)":"rotate(0)"}}>▾</span>
+          </div>
+
+          {/* Détail par période */}
+          {isExpanded&&<div style={{marginTop:14,borderTop:"1.5px solid var(--bd)",paddingTop:12}}>
+            {periods.map((period,pi)=><div key={pi} style={{marginBottom:pi<periods.length-1?14:0}}>
+              <div style={{fontSize:11,fontWeight:700,color:"var(--or)",background:"var(--or-l)",padding:"4px 10px",borderRadius:6,display:"inline-block",marginBottom:8}}>
+                {period.label} — {period.total.toLocaleString("fr-FR")} €
+              </div>
+              {period.dossiers.map(d=><div key={d.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",marginBottom:4,background:"var(--bg3)",borderRadius:"var(--r)",border:"1px solid var(--bd)"}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:600,fontSize:12,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.client}</div>
+                  <div style={{fontSize:10,color:"var(--tx4)"}}>{d.id} · {d.client_org||"—"} · {new Date(d.created).toLocaleDateString("fr-FR")}</div>
+                </div>
+                <div style={{fontWeight:800,fontSize:14,color:"var(--re)",flexShrink:0}}>{(d.amount||0).toLocaleString("fr-FR")} €</div>
+                {isSA&&<button className="btn btn-s btn-sm" style={{flexShrink:0}} onClick={()=>mark(d.id)}><Ic n="check" s={10}/>Valider</button>}
+              </div>)}
+            </div>)}
+          </div>}
+        </div>;
+      })}
+    </div>
+
+    {/* ── Par partenaire : PAYÉS ── */}
+    <div>
+      <h3 style={{fontSize:15,fontWeight:800,color:"var(--gr)",marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
+        <span style={{width:8,height:8,borderRadius:"50%",background:"var(--gr)",display:"inline-block"}}/>
+        Paiements encaissés
+      </h3>
+      {partners.filter(p=>p.totalPaid>0).length===0&&<div className="card" style={{textAlign:"center",padding:30,color:"var(--tx4)",fontSize:13}}>Aucun paiement encaissé</div>}
+      {partners.filter(p=>p.totalPaid>0).map(p=><div key={p.name} className="card" style={{marginBottom:10,border:"1.5px solid var(--gr)25"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:36,height:36,borderRadius:10,background:"var(--gr-l)",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800,fontSize:13,color:"var(--gr)",flexShrink:0}}>
+            {p.name[0]}
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:13}}>{p.name}</div>
+            <div style={{fontSize:10,color:"var(--tx4)"}}>{p.paid.length} dossier{p.paid.length>1?"s":""}</div>
+          </div>
+          <div style={{fontWeight:800,fontSize:17,color:"var(--gr)"}}>{p.totalPaid.toLocaleString("fr-FR")} €</div>
+          <span style={{color:"var(--gr)",fontSize:10,fontWeight:700,background:"var(--gr-l)",padding:"3px 10px",borderRadius:20,border:"1px solid rgba(34,197,94,.2)"}}>Payé</span>
+        </div>
       </div>)}
     </div>
   </div>;
@@ -1761,17 +1997,21 @@ function Admin({users,setUsers,toast}){
   const [nName,setNName]=useState("");const [nEmail,setNEmail]=useState("");const [nPwd,setNPwd]=useState("");const [nRole,setNRole]=useState("employee");
   const [delConfirm,setDelConfirm]=useState(null);
 
-  const roleColors={superadmin:{bg:"#fffbeb",color:"#b45309",border:"#fcd34d"},admin:{bg:"var(--or-l)",color:"var(--or)",border:"rgba(232,80,26,.2)"},employee:{bg:"var(--bl-l,#e0f2fe)",color:"var(--bl,#0284c7)",border:"rgba(2,132,199,.2)"},client:{bg:"var(--gr-l)",color:"var(--gr)",border:"rgba(34,197,94,.2)"}};
+  const roleColors={superadmin:{bg:"#fffbeb",color:"#b45309",border:"#fcd34d"},admin:{bg:"var(--or-l)",color:"var(--or)",border:"rgba(232,80,26,.2)"},employee:{bg:"var(--bl-l,#e0f2fe)",color:"var(--bl,#0284c7)",border:"rgba(2,132,199,.2)"},client:{bg:"var(--gr-l)",color:"var(--gr)",border:"rgba(34,197,94,.2)"},partenaire:{bg:"var(--pu-l)",color:"var(--pu)",border:"rgba(107,53,200,.2)"}};
   const rc=r=>roleColors[r]||roleColors.employee;
 
-  const addUser=()=>{
+  const addUser=async()=>{
     if(!nName.trim()||!nEmail.trim()||!nPwd.trim()){toast("Remplissez tous les champs","e");return;}
     if(users.find(u=>u.email===nEmail.trim())){toast("Cet email existe deja","e");return;}
     const initials=nName.trim().split(/\s+/).map(w=>w[0]).join("").toUpperCase().slice(0,2);
-    const newUser={id:Date.now(),name:nName.trim(),email:nEmail.trim(),password:nPwd.trim(),role:nRole,initials,avatar:null};
-    setUsers(p=>[...p,newUser]);
-    setNName("");setNEmail("");setNPwd("");setNRole("employee");setShowForm(false);
-    toast("Utilisateur "+newUser.name+" cree avec succes","s");
+    try{
+      const res=await fetch((import.meta.env.VITE_API_URL||'http://localhost:3001/api')+'/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nName.trim(),email:nEmail.trim(),password:nPwd.trim(),role:nRole,initials})});
+      const data=await res.json();
+      if(!res.ok){toast(data.error||"Erreur","e");return;}
+      setUsers(p=>[...p,{id:data.user.id,name:nName.trim(),email:nEmail.trim(),role:nRole,initials,avatar:null}]);
+      setNName("");setNEmail("");setNPwd("");setNRole("employee");setShowForm(false);
+      toast("Utilisateur "+nName.trim()+" cree avec succes","s");
+    }catch(e){toast("Erreur réseau : "+e.message,"e");}
   };
 
   const removeUser=id=>{
@@ -1798,11 +2038,15 @@ function Admin({users,setUsers,toast}){
             <option value="employee">Employe</option>
             <option value="admin">Admin</option>
             <option value="superadmin">Super Admin</option>
+            <option value="partenaire">Partenaire externe</option>
             <option value="client">Client</option>
           </select></div>
         </div>
         {nRole==="client"&&<div style={{padding:9,background:"var(--gr-l)",borderRadius:"var(--r)",fontSize:11,color:"var(--gr)",marginBottom:10,border:"1px solid rgba(34,197,94,.2)"}}>
           <strong>Profil Client :</strong> Ce compte ne verra que les dossiers associes a son email. Navigation restreinte (Dossiers, Documents, Profil).
+        </div>}
+        {nRole==="partenaire"&&<div style={{padding:9,background:"var(--pu-l)",borderRadius:"var(--r)",fontSize:11,color:"var(--pu)",marginBottom:10,border:"1px solid rgba(107,53,200,.2)"}}>
+          <strong>Profil Partenaire :</strong> Ce compte ne verra que les dossiers qu'il a crees. Acces restreint : Mes dossiers + Chat. Aucun acces a la GED, emails ou administration.
         </div>}
         <button className="btn btn-p btn-sm" onClick={addUser}><Ic n="check" s={11}/>Creer le compte</button>
       </div>}
@@ -1922,13 +2166,17 @@ export default function App(){
     toast(imported.length+" dossier(s) importé(s)","s");
   };
 
-  if(!user)return <><style>{CSS}</style><Login onLogin={u=>{localStorage.setItem('auth_user',JSON.stringify(u));setUser(u);setPage(u.role==="client"?"dossiers":"dashboard");}}/><Toasts ts={toasts} rm={rmToast}/></>;
+  if(!user)return <><style>{CSS}</style><Login onLogin={u=>{localStorage.setItem('auth_user',JSON.stringify(u));setUser(u);setPage((u.role==="client"||u.role==="partenaire")?"dossiers":"dashboard");}}/><Toasts ts={toasts} rm={rmToast}/></>;
 
   const isSA=user.role==="superadmin";
   const isClient=user.role==="client";
+  const isPartner=user.role==="partenaire";
   const curUser=users.find(u2=>u2.id===user.id)||user;
 
-  const navItems=isClient?[
+  const navItems=isPartner?[
+    {id:"dossiers",icon:"folder",label:"Mes dossiers",badge:dossiers.length},
+    {id:"profil",icon:"cam",label:"Mon profil"},
+  ]:isClient?[
     {id:"dossiers",icon:"folder",label:"Mes dossiers"},
     {id:"ged",icon:"file",label:"Documents"},
     {id:"profil",icon:"cam",label:"Mon profil"},
@@ -1949,14 +2197,14 @@ export default function App(){
   const setFilter=(k,v)=>{setGlobalFilters(f=>({...f,[k]:f[k]===v?"":v}));if(page!=="dossiers")setPage("dossiers");};
   const hasFilter=Object.values(globalFilters).some(Boolean);
 
-  // Client role: only see dossiers they created (matched by email)
-  const visibleDossiers=isClient?dossiers.filter(d=>d.email===user.email):dossiers;
+  // Client/Partenaire : filtrage des dossiers visibles
+  const visibleDossiers=isPartner?dossiers.filter(d=>d.created_by===user.id):isClient?dossiers.filter(d=>d.email===user.email):dossiers;
 
   const pages={
     dashboard:<Dashboard dossiers={visibleDossiers}/>,
     dossiers:<Dossiers dossiers={visibleDossiers} setDossiers={setDossiers} currentUser={user} toast={toast} addNotif={addNotif} globalQ={globalQ} globalFilters={globalFilters} clientsOrg={clientsOrg} setClientsOrg={setClientsOrg}/>,
     clients:<Clients dossiers={visibleDossiers} clientsOrg={clientsOrg} setClientsOrg={setClientsOrg} toast={toast}/>,
-    paiements:<Paiements dossiers={visibleDossiers} setDossiers={setDossiers} currentUser={user} toast={toast}/>,
+    paiements:<Paiements dossiers={visibleDossiers} setDossiers={setDossiers} currentUser={user} toast={toast} clientsOrg={clientsOrg} users={users}/>,
     ged:<div className="content"><GEDModule dossiers={visibleDossiers} onDossierUpdate={(id,data)=>{setDossiers(ds=>ds.map(d=>{if(d.id!==id)return d;const nd={...d,...(data.dp_number?{dp_number:data.dp_number}:{})};if(data.dp_number)nd.id=dossierId(data.dp_number,d.id);return nd;}));}}/></div>,
     emails:<EmailModule dossiers={visibleDossiers}/>,
     import:<Import setDossiers={setDossiers} toast={toast}/>,
@@ -1972,11 +2220,11 @@ export default function App(){
       {/* ── SIDEBAR ── */}
       <div className={"sb"+(sbOpen?" open":"")}>
         <div className="sb-logo"><img src={LOGO_SRC} alt="Eco Formalites"/></div>
-        {/* Search — prominent at top */}
-        <div className="sb-srch">
+        {/* Search — prominent at top (hidden for partners) */}
+        {!isPartner&&<div className="sb-srch">
           <span className="sb-srch-ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
           <input value={globalQ} onChange={e=>{setGlobalQ(e.target.value);if(e.target.value&&page!=="dossiers")setPage("dossiers");}} placeholder="Nom, CP, adresse, N° DP..."/>
-        </div>
+        </div>}
         <div className="sb-nav">
           <div className="nvsec">Navigation</div>
           {navItems.map(item=><div key={item.id} className={"nvi"+(page===item.id?" act":"")} onClick={()=>{setPage(item.id);setSbOpen(false);}}>
@@ -1999,7 +2247,7 @@ export default function App(){
           {/*<div className="tb-ttl">{titles[page]||"CRM"}</div>*/}
 
           {/* Filters — compact, left-aligned (hidden for clients) */}
-          {!isClient&&<div className="tb-flt">
+          {!isClient&&!isPartner&&<div className="tb-flt">
             <input className={"fsel"+(globalFilters.client_name?" on":"")}
               value={globalFilters.client_name}
               onChange={e=>{setGlobalFilters(f=>({...f,client_name:e.target.value}));if(e.target.value&&page!=="dossiers")setPage("dossiers");}}
@@ -2030,7 +2278,7 @@ export default function App(){
             {hasFilter&&<button className="btn btn-d btn-sm" onClick={()=>setGlobalFilters({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""})}><Ic n="x" s={11}/>Réinitialiser</button>}
           </div>}
 
-          {!isClient&&<><input ref={topXlsRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])topImportXLS(e.target.files[0]);e.target.value="";}}/>
+          {!isClient&&!isPartner&&<><input ref={topXlsRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])topImportXLS(e.target.files[0]);e.target.value="";}}/>
           <button className="btn btn-s btn-sm tb-xls" onClick={()=>topXlsRef.current?.click()} style={{marginLeft:"auto"}}><Ic n="import" s={12} c="var(--gr)"/>Importer</button>
           <button className="btn btn-s btn-sm tb-xls" onClick={topExportXLS}><Ic n="dl" s={12} c="var(--bl)"/>Exporter</button></>}
           <button className="dtog" onClick={toggleDark} title={dark?"Clair":"Sombre"}>{dark?"☀️":"🌙"}</button>

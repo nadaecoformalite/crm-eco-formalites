@@ -54,4 +54,14 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-module.exports = { authMiddleware, generateToken, requireAdmin, JWT_SECRET };
+/**
+ * Middleware : bloque les partenaires (routes internes uniquement).
+ */
+function requireInternal(req, res, next) {
+  if (req.user && req.user.role === 'partenaire') {
+    return res.status(403).json({ error: 'Accès réservé aux utilisateurs internes.' });
+  }
+  next();
+}
+
+module.exports = { authMiddleware, generateToken, requireAdmin, requireInternal, JWT_SECRET };
