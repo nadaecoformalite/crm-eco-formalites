@@ -26,7 +26,7 @@ app.use(helmet({
 const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:5174,http://localhost:3000,http://localhost:3001,https://localhost:5173,https://localhost:5174,https://localhost:3000,https://localhost:3001').split(',');
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+    if (!origin || ALLOWED_ORIGINS.includes(origin) || (origin && origin.endsWith('.ngrok-free.dev'))) return callback(null, true);
     callback(new Error('CORS non autorisé'));
   },
   credentials: true,
@@ -1144,6 +1144,16 @@ app.post('/api/urbanisme/lookup', async (req, res) => {
 app.get('/api/health', (_, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// ── Serve frontend (production build) ────────────────────────────────────────
+const distPath = path.join(__dirname, '..', 'dist');
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) return next();
+    res.sendFile(path.join(distPath, 'index.html'));
+  });
+}
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

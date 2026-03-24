@@ -490,6 +490,34 @@ function MessageThread({ conversation, currentUser, users, dossiers, onBack, exp
         </button>}
       </div>
 
+      {/* Participants bar */}
+      {(() => {
+        const parts = (conversation.participants || [])
+          .map(p => (users || []).find(u => String(u.id) === String(p.user_id)))
+          .filter(Boolean);
+        if (!parts.length) return null;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 14px',
+            borderBottom: '1px solid var(--bd)', background: 'var(--bg2)', flexWrap: 'wrap', flexShrink: 0 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+            </svg>
+            {parts.map(u => {
+              const isMe = String(u.id) === String(currentUser.id);
+              return (
+                <span key={u.id} style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10,
+                  background: isMe ? 'var(--or-l)' : 'var(--bg)',
+                  color: isMe ? 'var(--or)' : 'var(--tx2)',
+                  border: isMe ? '1px solid var(--or)' : '1px solid var(--bd)',
+                  whiteSpace: 'nowrap' }}>
+                  {isMe ? 'Moi' : u.name}
+                </span>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Messages area */}
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex',
         flexDirection: 'column', gap: 2, background: 'var(--bg3)' }}>
@@ -642,8 +670,8 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
       display: 'flex', flexDirection: 'column', animation: 'chat-fade-in 0.2s ease' }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '12px 14px', borderBottom: '1.5px solid var(--bd)', flexShrink: 0 }}>
-        <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--or)' }}>Nouvelle conversation</span>
+        padding: '8px 12px', borderBottom: '1.5px solid var(--bd)', flexShrink: 0 }}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--or)' }}>Nouvelle conversation</span>
         <button onClick={onCancel} style={{ background: 'none', border: 'none', cursor: 'pointer',
           padding: 4, color: 'var(--tx3)', display: 'flex', borderRadius: 6, transition: 'background 0.15s' }}
           onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
@@ -652,15 +680,12 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
         </button>
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', padding: '14px' }}>
-        {/* Dossier search — en haut */}
-        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--or)', display: 'block', marginBottom: 4 }}>
-          Dossier
-        </label>
-        <div style={{ position: 'relative', marginBottom: 14 }}>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
+        {/* Dossier search */}
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--or)', display: 'block', marginBottom: 3 }}>Dossier</label>
+        <div style={{ position: 'relative', marginBottom: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1.5px solid var(--bd)',
-            borderRadius: 'var(--r)', padding: '6px 12px', background: 'var(--bg3)',
-            transition: 'border-color 0.15s' }}>
+            borderRadius: 'var(--r)', padding: '5px 10px', background: 'var(--bg3)' }}>
             <Ic.Search />
             <input ref={dossierSearchRef} value={dossierSearch}
               onChange={e => { setDossierSearch(e.target.value); setDossierId(''); setDossierDropOpen(true); }}
@@ -668,91 +693,75 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
               onBlur={() => setTimeout(() => setDossierDropOpen(false), 150)}
               placeholder="N° DP, nom client, partenaire..."
               style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                fontSize: 13, fontFamily: 'var(--ff)', color: 'var(--tx)' }}
+                fontSize: 12, fontFamily: 'var(--ff)', color: 'var(--tx)' }}
             />
+            {selectedDossier && <button onClick={() => { setDossierId(''); setDossierSearch(''); }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                color: 'var(--tx3)', display: 'flex', borderRadius: 4 }}><Ic.X /></button>}
           </div>
           {dossierDropOpen && filteredDossiers.length > 0 && (
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
               background: 'var(--bg2)', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)',
-              maxHeight: 180, overflowY: 'auto', boxShadow: 'var(--shl)', marginTop: 2 }}>
-              {filteredDossiers.slice(0, 20).map(dd => (
+              maxHeight: 150, overflowY: 'auto', boxShadow: 'var(--shl)', marginTop: 2 }}>
+              {filteredDossiers.slice(0, 15).map(dd => (
                 <div key={dd.id} onClick={() => {
                   setDossierId(String(dd.id));
                   setDossierSearch(dossierLabel(dd));
                   setDossierDropOpen(false);
-                }} style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', color: 'var(--tx)',
+                }} style={{ padding: '5px 10px', fontSize: 12, cursor: 'pointer', color: 'var(--tx)',
                   transition: 'background 0.1s', display: 'flex', alignItems: 'center', gap: 6 }}
                   onMouseEnter={e => e.currentTarget.style.background = 'var(--or-l)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  {dd.dp_number && <span style={{ fontWeight: 700, color: 'var(--or)', fontSize: 11,
-                    background: 'var(--or-l)', padding: '1px 6px', borderRadius: 6, flexShrink: 0 }}>{dd.dp_number}</span>}
+                  {dd.dp_number && <span style={{ fontWeight: 700, color: 'var(--or)', fontSize: 10,
+                    background: 'var(--or-l)', padding: '1px 5px', borderRadius: 6, flexShrink: 0 }}>{dd.dp_number}</span>}
                   <span style={{ fontWeight: 600 }}>{dd.client || `Dossier #${dd.id}`}</span>
-                  {dd.client_org && <span style={{ color: 'var(--tx3)', fontSize: 12 }}>({dd.client_org})</span>}
+                  {dd.client_org && <span style={{ color: 'var(--tx3)', fontSize: 11 }}>({dd.client_org})</span>}
                 </div>
               ))}
             </div>
           )}
         </div>
-        {/* Selected dossier badge */}
         {selectedDossier && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', marginBottom: 14,
-            background: 'var(--or-l)', borderRadius: 'var(--r)', border: '1.5px solid var(--or)' }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--or)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
-            </svg>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--or)', overflow: 'hidden',
-                textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selectedDossier.client}</div>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 1 }}>
-                {selectedDossier.dp_number && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--or)',
-                  background: 'var(--or-l)', padding: '1px 6px', borderRadius: 6 }}>{selectedDossier.dp_number}</span>}
-                {selectedDossier.client_org && <span style={{ fontSize: 11, color: 'var(--tx3)' }}>{selectedDossier.client_org}</span>}
-              </div>
-            </div>
-            <button onClick={() => { setDossierId(''); setDossierSearch(''); }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                color: 'var(--tx3)', display: 'flex', borderRadius: 4 }}>
-              <Ic.X />
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 8px', marginBottom: 8,
+            background: 'var(--or-l)', borderRadius: 6, fontSize: 11, color: 'var(--or)', fontWeight: 600 }}>
+            <span>{selectedDossier.client}</span>
+            {selectedDossier.dp_number && <span style={{ opacity: 0.7 }}>— {selectedDossier.dp_number}</span>}
           </div>
         )}
 
         {/* Participants */}
-        <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--or)', display: 'block', marginBottom: 6 }}>
-          Participants
-        </label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--or)', display: 'block', marginBottom: 3 }}>Participants</label>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
           {otherUsers.length === 0 && (
-            <div style={{ fontSize: 12, color: 'var(--tx4)', padding: 8 }}>Aucun autre utilisateur</div>
+            <div style={{ fontSize: 11, color: 'var(--tx4)', padding: 6, gridColumn: '1/-1' }}>Aucun autre utilisateur</div>
           )}
           {otherUsers.map(u => {
             const checked = selectedUsers.includes(u.id);
             return (
-              <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
-                borderRadius: 8, cursor: 'pointer', transition: 'background 0.15s',
+              <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 5px',
+                borderRadius: 6, cursor: 'pointer', transition: 'background 0.15s',
                 background: checked ? 'var(--or-l)' : 'transparent' }}
                 onMouseEnter={e => { if (!checked) e.currentTarget.style.background = 'var(--bg)'; }}
                 onMouseLeave={e => { if (!checked) e.currentTarget.style.background = 'transparent'; }}>
                 <input type="checkbox" checked={checked} onChange={() => toggleUser(u.id)}
-                  style={{ accentColor: 'var(--or)', width: 16, height: 16 }}/>
-                <Avatar name={u.name} size={24} />
-                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--tx)' }}>{u.name}</span>
+                  style={{ accentColor: 'var(--or)', width: 13, height: 13 }}/>
+                <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</span>
               </label>
             );
           })}
         </div>
 
         {error && (
-          <div style={{ marginTop: 12, padding: '6px 10px', borderRadius: 8, background: 'var(--re-l)',
-            color: 'var(--re)', fontSize: 12, fontWeight: 600 }}>{error}</div>
+          <div style={{ marginTop: 6, padding: '4px 8px', borderRadius: 6, background: 'var(--re-l)',
+            color: 'var(--re)', fontSize: 11, fontWeight: 600 }}>{error}</div>
         )}
       </div>
 
       {/* Create button */}
-      <div style={{ padding: '12px 14px', borderTop: '1.5px solid var(--bd)', flexShrink: 0 }}>
+      <div style={{ padding: '8px 12px', borderTop: '1.5px solid var(--bd)', flexShrink: 0 }}>
         <button onClick={handleCreate} disabled={creating}
-          style={{ width: '100%', padding: '10px 0', borderRadius: 'var(--r)', border: 'none',
-            background: 'var(--or)', color: '#fff', fontSize: 13, fontWeight: 700, fontFamily: 'var(--ff)',
+          style={{ width: '100%', padding: '8px 0', borderRadius: 'var(--r)', border: 'none',
+            background: 'var(--or)', color: '#fff', fontSize: 12, fontWeight: 700, fontFamily: 'var(--ff)',
             cursor: creating ? 'default' : 'pointer', opacity: creating ? 0.7 : 1,
             transition: 'opacity 0.15s, transform 0.1s' }}
           onMouseEnter={e => { if (!creating) e.currentTarget.style.transform = 'scale(1.01)'; }}
@@ -841,68 +850,64 @@ function ConversationList({ currentUser, users, dossiers, onSelect, onDelete }) 
         )}
         {filtered.map(conv => {
           const dos = conv.dossier_id ? (dossiers || []).find(d => String(d.id) === String(conv.dossier_id)) : null;
+          const parts = (conv.participants || [])
+            .map(p => (users || []).find(u => String(u.id) === String(p.user_id)))
+            .filter(Boolean);
+          const hasUnread = conv.unread_count > 0;
           return (
           <div key={conv.id} onClick={() => onSelect(conv)}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px',
-              cursor: 'pointer', transition: 'background 0.12s', borderBottom: '1px solid var(--bd)' }}
+            style={{ padding: '10px 14px', cursor: 'pointer', transition: 'background 0.15s',
+              borderBottom: '1px solid var(--bd)', borderLeft: hasUnread ? '3px solid var(--or)' : '3px solid transparent' }}
             onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
             onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-            {/* Type icon */}
-            <div style={{ width: 36, height: 36, borderRadius: 10, display: 'flex', alignItems: 'center',
-              justifyContent: 'center', fontSize: 18, flexShrink: 0,
-              background: 'var(--or-l)' }}>
-              {'📁'}
+            {/* Row 1: title + time + unread */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 13, color: hasUnread ? 'var(--or)' : 'var(--tx)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{conv.title}</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                {hasUnread && <span style={{ background: 'var(--or)', color: '#fff', fontSize: 9, fontWeight: 700,
+                  borderRadius: 10, padding: '1px 6px', minWidth: 16, textAlign: 'center' }}>{conv.unread_count}</span>}
+                <span style={{ fontSize: 10, color: 'var(--tx4)' }}>{timeAgo(conv.last_message_time)}</span>
+              </div>
             </div>
-            {/* Info */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
-                <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--tx)', overflow: 'hidden',
-                  textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conv.title}</span>
-                <span style={{ fontSize: 10, color: 'var(--tx4)', flexShrink: 0 }}>
-                  {timeAgo(conv.last_message_time)}
-                </span>
+            {/* Row 2: DP badge + client */}
+            {dos && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 4 }}>
+                {dos.dp_number && <span style={{ fontSize: 9, fontWeight: 700, color: 'var(--bl)',
+                  background: 'var(--bl-l)', padding: '1px 6px', borderRadius: 6, flexShrink: 0 }}>{dos.dp_number}</span>}
+                <span style={{ fontSize: 11, color: 'var(--tx2)', fontWeight: 500, overflow: 'hidden',
+                  textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{dos.client}{dos.client_org ? ` — ${dos.client_org}` : ''}</span>
               </div>
-              {/* Dossier info line: DP, client, partenaire */}
-              {dos && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2, flexWrap: 'wrap' }}>
-                  {dos.dp_number && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--or)', background: 'var(--or-l)',
-                    padding: '1px 6px', borderRadius: 8 }}>{dos.dp_number}</span>}
-                  {dos.client && <span style={{ fontSize: 11, color: 'var(--tx2)', fontWeight: 500 }}>{dos.client}</span>}
-                  {dos.client_org && <span style={{ fontSize: 10, color: 'var(--tx4)' }}>({dos.client_org})</span>}
-                </div>
-              )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
-                marginTop: 2 }}>
-                <span style={{ fontSize: 12, color: 'var(--tx3)', overflow: 'hidden', textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap' }}>
-                  {conv.last_message ? (conv.last_message.length > 40 ? conv.last_message.slice(0, 40) + '...' : conv.last_message) : 'Aucun message'}
-                </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                  {conv.unread_count > 0 && (
-                    <span style={{ background: 'var(--or)', color: '#fff', fontSize: 10, fontWeight: 700,
-                      borderRadius: 10, padding: '1px 6px', minWidth: 16, textAlign: 'center',
-                      display: 'inline-block' }}>
-                      {conv.unread_count}
-                    </span>
-                  )}
-                  <button onClick={e => { e.stopPropagation(); onSelect(conv); }} title="Ouvrir le chat"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                      color: 'var(--tx4)', display: 'flex', borderRadius: 4, transition: 'color 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--or)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--tx4)'}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-                    </svg>
-                  </button>
-                  <button onClick={e => handleDelete(e, conv)} title="Supprimer"
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
-                      color: 'var(--tx4)', display: 'flex', borderRadius: 4, transition: 'color 0.15s' }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--re)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--tx4)'}>
-                    <Ic.Trash />
-                  </button>
-                </div>
+            )}
+            {/* Row 3: participants */}
+            {parts.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 4, flexWrap: 'wrap' }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
+                </svg>
+                {parts.map(u => (
+                  <span key={u.id} style={{ fontSize: 9, fontWeight: 600, padding: '1px 5px', borderRadius: 8,
+                    background: String(u.id) === String(currentUser.id) ? 'var(--or-l)' : 'var(--bg3)',
+                    color: String(u.id) === String(currentUser.id) ? 'var(--or)' : 'var(--tx3)',
+                    border: `1px solid ${String(u.id) === String(currentUser.id) ? 'rgba(232,80,26,.2)' : 'var(--bd)'}` }}>
+                    {String(u.id) === String(currentUser.id) ? 'Moi' : u.name}
+                  </span>
+                ))}
               </div>
+            )}
+            {/* Row 4: last message + actions */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 4 }}>
+              <span style={{ fontSize: 11, color: 'var(--tx4)', overflow: 'hidden', textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap', fontStyle: conv.last_message ? 'normal' : 'italic', flex: 1 }}>
+                {conv.last_message ? (conv.last_message.length > 50 ? conv.last_message.slice(0, 50) + '…' : conv.last_message) : 'Aucun message'}
+              </span>
+              <button onClick={e => handleDelete(e, conv)} title="Supprimer"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 3,
+                  color: 'var(--tx4)', display: 'flex', borderRadius: 4, transition: 'color 0.15s', flexShrink: 0, opacity: 0.5 }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--re)'; e.currentTarget.style.opacity = '1'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--tx4)'; e.currentTarget.style.opacity = '0.5'; }}>
+                <Ic.Trash />
+              </button>
             </div>
           </div>
           );
