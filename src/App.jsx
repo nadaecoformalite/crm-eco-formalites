@@ -44,6 +44,16 @@ const INIT_USERS = [
   {id:2,name:"Admin",email:"admin@crm.fr",password:"admin123",role:"admin",initials:"AD",avatar:null},
   {id:3,name:"Sarah",email:"sarah@crm.fr",password:"sarah123",role:"employee",initials:"SR",avatar:null},
   {id:4,name:"BTS Partenaire",email:"partenaire@test.fr",password:"part123",role:"partenaire",initials:"BP",avatar:null},
+  {id:5,name:"Nada",email:"nada@crm.fr",password:"nada123",role:"employee",initials:"NA",avatar:null},
+  {id:6,name:"David",email:"david@crm.fr",password:"david123",role:"employee",initials:"DA",avatar:null},
+  {id:7,name:"Yossi",email:"yossi@crm.fr",password:"yossi123",role:"employee",initials:"YO",avatar:null},
+  {id:8,name:"Jimmy",email:"jimmy@crm.fr",password:"jimmy123",role:"employee",initials:"JI",avatar:null},
+  {id:9,name:"Sonia",email:"sonia@crm.fr",password:"sonia123",role:"employee",initials:"SO",avatar:null},
+  {id:10,name:"Harry",email:"harry@crm.fr",password:"harry123",role:"employee",initials:"HA",avatar:null},
+  {id:11,name:"Farah",email:"farah@crm.fr",password:"farah123",role:"employee",initials:"FA",avatar:null},
+  {id:12,name:"Fabienne",email:"fabienne@crm.fr",password:"fabienne123",role:"employee",initials:"FB",avatar:null},
+  {id:13,name:"Ounza",email:"ounza@crm.fr",password:"ounza123",role:"employee",initials:"OU",avatar:null},
+  {id:14,name:"Yael",email:"yael@crm.fr",password:"yael123",role:"employee",initials:"YA",avatar:null},
 ];
 
 const INIT_CLIENTS_ORG = [

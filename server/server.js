@@ -6,6 +6,8 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcryptjs');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
+const https = require('https');
 const { authMiddleware, generateToken, requireInternal } = require('./middleware/auth');
 const { router: emailRouter, seedTemplates, startEmailCron } = require('./routes/emails');
 const { router: documentsRouter, UPLOAD_ROOT } = require('./routes/documents');
@@ -21,7 +23,7 @@ app.use(helmet({
 }));
 
 // ── CORS restreint ───────────────────────────────────────────────────────────
-const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:5174,http://localhost:3000,http://localhost:3001').split(',');
+const ALLOWED_ORIGINS = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:5174,http://localhost:3000,http://localhost:3001,https://localhost:5173,https://localhost:5174,https://localhost:3000,https://localhost:3001').split(',');
 app.use(cors({
   origin(origin, callback) {
     if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
@@ -1145,10 +1147,25 @@ app.get('/api/health', (_, res) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
-  console.log(`\n✅ Eco-formalités API running on http://localhost:${PORT}`);
-  console.log(`📝 Database: ${dbPath}\n`);
-  startEmailCron(db);
-});
+const SSL_KEY = process.env.SSL_KEY || path.join(__dirname, 'ssl', 'key.pem');
+const SSL_CERT = process.env.SSL_CERT || path.join(__dirname, 'ssl', 'cert.pem');
+
+if (fs.existsSync(SSL_KEY) && fs.existsSync(SSL_CERT)) {
+  const sslOptions = {
+    key: fs.readFileSync(SSL_KEY),
+    cert: fs.readFileSync(SSL_CERT),
+  };
+  https.createServer(sslOptions, app).listen(PORT, () => {
+    console.log(`\n🔒 Eco-formalités API running on https://localhost:${PORT}`);
+    console.log(`📝 Database: ${dbPath}\n`);
+    startEmailCron(db);
+  });
+} else {
+  app.listen(PORT, () => {
+    console.log(`\n✅ Eco-formalités API running on http://localhost:${PORT}`);
+    console.log(`📝 Database: ${dbPath}\n`);
+    startEmailCron(db);
+  });
+}
 
 module.exports = db;

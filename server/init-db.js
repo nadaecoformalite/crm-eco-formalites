@@ -11,7 +11,8 @@ const USERS = [
   { id: 3, name: "Nada", email: "nada@crm.fr", password: "nada123", role: "employee", initials: "NA" },
   { id: 4, name: "Sarah", email: "sarah@crm.fr", password: "sarah123", role: "employee", initials: "SR" },
   { id: 5, name: "David", email: "david@crm.fr", password: "david123", role: "employee", initials: "DA" },
-  { id: 6, name: "BTS Partenaire", email: "partenaire@test.fr", password: "part123", role: "partenaire", initials: "BP" }
+  { id: 6, name: "BTS Partenaire", email: "partenaire@test.fr", password: "part123", role: "partenaire", initials: "BP" },
+  { id: 7, name: "Yossi", email: "yossi@crm.fr", password: "yossi123", role: "employee", initials: "YO" }
 ];
 
 const DOSSIERS = [
