@@ -11,7 +11,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url
 ).toString();
 
-const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || '';
 
 // ── Document categories ───────────────────────────────────────────────────────
 
@@ -798,16 +798,23 @@ function PreviewPanel({ doc, onClose, onEdit, onDelete, onVersions, onReplace, e
   const [pageNum, setPageNum] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [pdfDoc, setPdfDoc] = useState(null);
+  const [zoom, setZoom] = useState(1);
   const replaceRef = useRef(null);
+  const previewRef = useRef(null);
 
   const url = `${API_BASE}${doc.url}`;
   const isPdf = doc.mime_type === 'application/pdf';
   const isImage = doc.mime_type?.startsWith('image/');
   const cat = catMap[doc.category] || catMap.autre;
 
+  const zoomIn = () => setZoom(z => Math.min(z + 0.25, 5));
+  const zoomOut = () => setZoom(z => Math.max(z - 0.25, 0.25));
+  const zoomReset = () => setZoom(1);
+
   useEffect(() => {
     setPageNum(1);
     setPdfDoc(null);
+    setZoom(1);
     if (!isPdf) return;
     pdfjsLib.getDocument(url).promise.then(pdf => {
       setPdfDoc(pdf);
@@ -815,20 +822,34 @@ function PreviewPanel({ doc, onClose, onEdit, onDelete, onVersions, onReplace, e
     }).catch(() => {});
   }, [url, isPdf]);
 
+  // Render PDF at high resolution then let CSS zoom control display size
   useEffect(() => {
     if (!pdfDoc || !canvasRef.current) return;
     pdfDoc.getPage(pageNum).then(page => {
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const maxW = canvas.parentElement?.clientWidth || 400;
-      const baseViewport = page.getViewport({ scale: 1 });
-      const scale = Math.min((maxW - 20) / baseViewport.width, 1.6);
-      const viewport = page.getViewport({ scale });
+      // Render at 2x for sharpness
+      const renderScale = 2.5;
+      const viewport = page.getViewport({ scale: renderScale });
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       page.render({ canvasContext: canvas.getContext('2d'), viewport });
     });
   }, [pdfDoc, pageNum]);
+
+  // Zoom with mouse wheel on preview area
+  useEffect(() => {
+    const el = previewRef.current;
+    if (!el) return;
+    const onWheel = (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        setZoom(z => Math.min(Math.max(z + (e.deltaY < 0 ? 0.15 : -0.15), 0.25), 5));
+      }
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
 
   const handleReplace = async (e) => {
     const files = e.target.files;
@@ -841,24 +862,24 @@ function PreviewPanel({ doc, onClose, onEdit, onDelete, onVersions, onReplace, e
   };
 
   return (
-    <div style={{ width: 420, minWidth: 320, maxWidth: 480, background: 'var(--bg2)', borderLeft: '1.5px solid var(--bd)',
+    <div className="ged-preview" style={{ width: 480, minWidth: 360, maxWidth: 560, background: 'var(--bg2)', borderLeft: '1.5px solid var(--bd)',
       display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', flexShrink: 0 }}>
       {/* Header */}
-      <div style={{ padding: '14px 16px', borderBottom: '1.5px solid var(--bd)', background: 'var(--bg3)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-          <FileIcon mime={doc.mime_type} size={32} />
+      <div style={{ padding: '12px 14px', borderBottom: '1.5px solid var(--bd)', background: 'var(--bg3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <FileIcon mime={doc.mime_type} size={28} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {doc.original_name || doc.name}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--tx4)', marginTop: 2 }}>
+            <div style={{ fontSize: 11, color: 'var(--tx4)', marginTop: 1 }}>
               {doc.size_human} · v{doc.version}
             </div>
           </div>
           <button className="bic" onClick={onClose} style={{ fontSize: 14, flexShrink: 0 }}>✕</button>
         </div>
         {/* Metadata */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
           <span style={{ fontSize: 10, fontWeight: 700, color: cat.color, background: cat.bg,
             padding: '2px 8px', borderRadius: 6, border: `1px solid ${cat.color}30` }}>
             {cat.icon} {cat.label}
@@ -875,59 +896,80 @@ function PreviewPanel({ doc, onClose, onEdit, onDelete, onVersions, onReplace, e
           )}
         </div>
         {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
           <a href={url} download={doc.original_name || doc.name} target="_blank" rel="noreferrer"
-            className="btn btn-p btn-sm" style={{ fontSize: 11, gap: 4 }}>
+            className="btn btn-p btn-sm" style={{ fontSize: 10, gap: 4, padding: '3px 8px' }}>
             <span>↓</span> Telecharger
           </a>
           {isPdf && (
-            <button className="btn btn-s btn-sm" style={{ fontSize: 11 }} onClick={() => onEdit(doc)}>
+            <button className="btn btn-s btn-sm" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => onEdit(doc)}>
               ✏ Editer
             </button>
           )}
-          <button className="btn btn-s btn-sm" style={{ fontSize: 11 }} onClick={() => onVersions(doc)}>
+          <button className="btn btn-s btn-sm" style={{ fontSize: 10, padding: '3px 8px' }} onClick={() => onVersions(doc)}>
             🕐 Versions
           </button>
           {effectiveDossierId && (
-            <button className="btn btn-s btn-sm" style={{ fontSize: 11 }}
+            <button className="btn btn-s btn-sm" style={{ fontSize: 10, padding: '3px 8px' }}
               onClick={() => replaceRef.current?.click()}>
               ↻ Remplacer
             </button>
           )}
-          <button className="btn btn-sm" style={{ fontSize: 11, background: 'var(--re-l)', color: 'var(--re)',
+          <button className="btn btn-sm" style={{ fontSize: 10, padding: '3px 8px', background: 'var(--re-l)', color: 'var(--re)',
             border: '1px solid var(--re)' }} onClick={() => onDelete(doc)}>
-            ✕ Supprimer
+            ✕ Suppr.
           </button>
           <input ref={replaceRef} type="file" style={{ display: 'none' }} onChange={handleReplace}
             accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt" />
         </div>
       </div>
 
+      {/* Zoom controls bar */}
+      {(isImage || isPdf) && (
+        <div style={{ padding: '5px 14px', borderBottom: '1px solid var(--bd)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', gap: 8, background: '#222220' }}>
+          <button onClick={zoomOut} style={{ background: 'none', border: '1px solid #555', borderRadius: 5,
+            color: '#ccc', width: 26, height: 26, cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+          <button onClick={zoomReset} style={{ background: 'none', border: '1px solid #555', borderRadius: 5,
+            color: '#ccc', padding: '2px 10px', height: 26, cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'var(--fm)' }}>
+            {Math.round(zoom * 100)}%
+          </button>
+          <button onClick={zoomIn} style={{ background: 'none', border: '1px solid #555', borderRadius: 5,
+            color: '#ccc', width: 26, height: 26, cursor: 'pointer', fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+          <span style={{ fontSize: 9, color: '#777', marginLeft: 4 }}>Ctrl + molette</span>
+        </div>
+      )}
+
       {/* Preview area */}
-      <div style={{ flex: 1, overflow: 'auto', background: '#1a1a18', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'flex-start', padding: 12 }}>
+      <div ref={previewRef} style={{ flex: 1, overflow: 'auto', background: '#1a1a18', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'flex-start', padding: 16 }}>
         {isImage && (
-          <img src={url} alt={doc.name} style={{ maxWidth: '100%', borderRadius: 6 }} />
+          <img src={url} alt={doc.name} style={{ width: `${zoom * 100}%`, maxWidth: 'none', borderRadius: 6,
+            boxShadow: '0 4px 20px rgba(0,0,0,.5)', transition: 'width .15s ease' }} />
         )}
         {isPdf && (
-          <canvas ref={canvasRef} style={{ maxWidth: '100%', borderRadius: 4,
-            boxShadow: '0 4px 16px rgba(0,0,0,.4)' }} />
+          <canvas ref={canvasRef} style={{ width: `${zoom * 100}%`, maxWidth: 'none', borderRadius: 4,
+            boxShadow: '0 4px 20px rgba(0,0,0,.5)', transition: 'width .15s ease' }} />
         )}
         {!isImage && !isPdf && (
           <div style={{ color: '#fff', textAlign: 'center', paddingTop: 60 }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
             <div style={{ fontSize: 12 }}>Apercu non disponible</div>
+            <a href={url} download={doc.original_name || doc.name} target="_blank" rel="noreferrer"
+              style={{ color: 'var(--or)', fontSize: 12, marginTop: 8, display: 'inline-block', textDecoration: 'underline' }}>
+              Telecharger le fichier
+            </a>
           </div>
         )}
       </div>
 
       {/* PDF pagination */}
       {isPdf && totalPages > 1 && (
-        <div style={{ padding: '8px 16px', borderTop: '1.5px solid var(--bd)', display: 'flex',
+        <div style={{ padding: '7px 14px', borderTop: '1.5px solid var(--bd)', display: 'flex',
           alignItems: 'center', justifyContent: 'center', gap: 10, background: 'var(--bg3)' }}>
           <button className="btn btn-s btn-sm" disabled={pageNum <= 1}
             onClick={() => setPageNum(p => p - 1)} style={{ minWidth: 28 }}>←</button>
-          <span style={{ fontSize: 12, color: 'var(--tx3)' }}>{pageNum} / {totalPages}</span>
+          <span style={{ fontSize: 12, color: 'var(--tx3)', fontWeight: 600, fontFamily: 'var(--fm)' }}>{pageNum} / {totalPages}</span>
           <button className="btn btn-s btn-sm" disabled={pageNum >= totalPages}
             onClick={() => setPageNum(p => p + 1)} style={{ minWidth: 28 }}>→</button>
         </div>
@@ -1070,11 +1112,11 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
       )}
 
       {/* ═══ THREE-PANE LAYOUT ═══ */}
-      <div style={{ display: 'flex', gap: 0, border: '1.5px solid var(--bd)', borderRadius: 'var(--rl)',
+      <div className="ged-3pane" style={{ display: 'flex', gap: 0, border: '1.5px solid var(--bd)', borderRadius: 'var(--rl)',
         overflow: 'hidden', background: 'var(--bg2)', minHeight: isEmbedded ? 400 : 520, boxShadow: 'var(--sh)' }}>
 
         {/* ── LEFT PANE: Category sidebar ── */}
-        <div style={{ width: 200, minWidth: 180, background: 'var(--bg3)', borderRight: '1.5px solid var(--bd)',
+        <div className="ged-sidebar" style={{ width: 200, minWidth: 180, background: 'var(--bg3)', borderRight: '1.5px solid var(--bd)',
           display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'auto' }}>
           <div style={{ padding: '14px 12px 8px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
             letterSpacing: '.08em', color: 'var(--tx4)' }}>
@@ -1256,7 +1298,7 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
             onUploaded={handleUploaded}
             onExtracted={handleExtracted} />
         ) : (
-          <div style={{ width: 320, minWidth: 260, background: 'var(--bg3)', borderLeft: '1.5px solid var(--bd)',
+          <div className="ged-empty-preview" style={{ width: 320, minWidth: 260, background: 'var(--bg3)', borderLeft: '1.5px solid var(--bd)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             color: 'var(--tx4)', flexShrink: 0, padding: 24 }}>
             <div style={{ fontSize: 40, marginBottom: 12, opacity: .4 }}>📄</div>

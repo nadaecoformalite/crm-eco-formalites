@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getToken } from './api.js';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 function authHeaders(extra = {}) {
   const token = getToken();
@@ -630,6 +630,16 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
   const dossierSearchRef = useRef(null);
   const selectedDossier = dossierId ? (dossiers || []).find(dd => String(dd.id) === String(dossierId)) : null;
 
+  // Sync when initialDossier changes (e.g. clicking chat icon from another dossier)
+  useEffect(() => {
+    if (initialDossier) {
+      setDossierId(String(initialDossier.id));
+      setDossierSearch(dossierLabel(initialDossier));
+      setSelectedUsers([]);
+      setError('');
+    }
+  }, [initialDossier?.id]);
+
   const toggleUser = id => {
     setSelectedUsers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
@@ -647,7 +657,7 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
         scope: 'interne',
         participant_ids: [...selectedUsers, currentUser.id],
         created_by: currentUser.id,
-        dossier_id: Number(dossierId),
+        dossier_id: dossierId,
       };
       const res = await fetch(`${API_URL}/chat/conversations`, {
         method: 'POST',
@@ -667,6 +677,15 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
   };
 
   const otherUsers = (users || []).filter(u => String(u.id) !== String(currentUser.id));
+  const [userSearch, setUserSearch] = useState('');
+  const [userDropOpen, setUserDropOpen] = useState(false);
+
+  const uq = userSearch.toLowerCase();
+  const filteredUsers = otherUsers.filter(u => {
+    if (!uq) return true;
+    const searchable = [u.name, u.email, u.role].filter(Boolean).join(' ').toLowerCase();
+    return searchable.includes(uq);
+  });
 
   const q = dossierSearch.toLowerCase();
   const filteredDossiers = (dossiers || []).filter(dd => {
@@ -741,24 +760,74 @@ function NewConversationForm({ currentUser, dossiers, users, onCreated, onCancel
 
         {/* Participants */}
         <label style={{ fontSize: 11, fontWeight: 600, color: 'var(--or)', display: 'block', marginBottom: 3 }}>Participants</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 2 }}>
-          {otherUsers.length === 0 && (
-            <div style={{ fontSize: 11, color: 'var(--tx4)', padding: 6, gridColumn: '1/-1' }}>Aucun autre utilisateur</div>
+        {/* Selected chips */}
+        {selectedUsers.length > 0 && (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 6 }}>
+            {selectedUsers.map(uid => {
+              const u = otherUsers.find(x => x.id === uid);
+              if (!u) return null;
+              const isPart = u.role === 'partenaire';
+              return <span key={uid} onClick={() => toggleUser(uid)} style={{ display: 'flex', alignItems: 'center', gap: 4,
+                padding: '3px 9px', borderRadius: 20, background: 'var(--or-l)', color: 'var(--or)', fontSize: 11,
+                fontWeight: 600, cursor: 'pointer', border: '1px solid rgba(232,80,26,.2)' }}>
+                {u.name}
+                {isPart && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 4px', borderRadius: 3,
+                  background: '#ede9fe', color: '#6B35C8' }}>Prestataire</span>}
+                <span style={{ fontSize: 13, lineHeight: 1, marginLeft: 2, opacity: .6 }}>×</span>
+              </span>;
+            })}
+          </div>
+        )}
+        {/* Search input with dropdown suggestions */}
+        <div style={{ position: 'relative', marginBottom: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1.5px solid var(--bd)',
+            borderRadius: 'var(--r)', padding: '5px 10px', background: 'var(--bg3)' }}>
+            <Ic.Search />
+            <input value={userSearch} onChange={e => setUserSearch(e.target.value)}
+              onFocus={() => setUserDropOpen(true)}
+              onBlur={() => setTimeout(() => setUserDropOpen(false), 150)}
+              placeholder="Tapez un nom de collaborateur ou prestataire..."
+              style={{ flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                fontSize: 12, fontFamily: 'var(--ff)', color: 'var(--tx)' }} />
+            {userSearch && <button onClick={() => setUserSearch('')}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2,
+                color: 'var(--tx3)', display: 'flex', borderRadius: 4 }}><Ic.X /></button>}
+          </div>
+          {/* Suggestions dropdown */}
+          {userDropOpen && userSearch.length > 0 && filteredUsers.length > 0 && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+              background: 'var(--bg2)', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)',
+              maxHeight: 170, overflowY: 'auto', boxShadow: 'var(--shl)', marginTop: 2 }}>
+              {filteredUsers.map(u => {
+                const already = selectedUsers.includes(u.id);
+                const isPart = u.role === 'partenaire';
+                return (
+                  <div key={u.id} onClick={() => { if (!already) { toggleUser(u.id); setUserSearch(''); } }}
+                    style={{ padding: '6px 10px', fontSize: 12, cursor: already ? 'default' : 'pointer',
+                      color: already ? 'var(--tx4)' : 'var(--tx)', display: 'flex', alignItems: 'center', gap: 6,
+                      transition: 'background 0.1s', opacity: already ? .5 : 1 }}
+                    onMouseEnter={e => { if (!already) e.currentTarget.style.background = 'var(--or-l)'; }}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <span style={{ fontWeight: 600 }}>{u.name}</span>
+                    {isPart && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+                      background: '#ede9fe', color: '#6B35C8', flexShrink: 0 }}>Prestataire</span>}
+                    {u.role === 'employee' && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+                      background: 'var(--or-l)', color: 'var(--or)', flexShrink: 0 }}>Équipe</span>}
+                    {(u.role === 'superadmin' || u.role === 'admin') && <span style={{ fontSize: 8, fontWeight: 700, padding: '1px 5px', borderRadius: 4,
+                      background: 'var(--bl-l)', color: 'var(--bl)', flexShrink: 0 }}>Admin</span>}
+                    {already && <span style={{ fontSize: 9, color: 'var(--tx4)', marginLeft: 'auto' }}>déjà ajouté</span>}
+                  </div>
+                );
+              })}
+            </div>
           )}
-          {otherUsers.map(u => {
-            const checked = selectedUsers.includes(u.id);
-            return (
-              <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '3px 5px',
-                borderRadius: 6, cursor: 'pointer', transition: 'background 0.15s',
-                background: checked ? 'var(--or-l)' : 'transparent' }}
-                onMouseEnter={e => { if (!checked) e.currentTarget.style.background = 'var(--bg)'; }}
-                onMouseLeave={e => { if (!checked) e.currentTarget.style.background = 'transparent'; }}>
-                <input type="checkbox" checked={checked} onChange={() => toggleUser(u.id)}
-                  style={{ accentColor: 'var(--or)', width: 13, height: 13 }}/>
-                <span style={{ fontSize: 11, fontWeight: 500, color: 'var(--tx)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.name}</span>
-              </label>
-            );
-          })}
+          {userDropOpen && userSearch.length > 0 && filteredUsers.length === 0 && (
+            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+              background: 'var(--bg2)', border: '1.5px solid var(--bd)', borderRadius: 'var(--r)',
+              boxShadow: 'var(--shl)', marginTop: 2, padding: '8px 10px', fontSize: 11, color: 'var(--tx4)' }}>
+              Aucun utilisateur trouvé pour « {userSearch} »
+            </div>
+          )}
         </div>
 
         {error && (
@@ -934,6 +1003,14 @@ function ChatPanel({ currentUser, dossiers, users, onClose, initialDossier }) {
   const [activeConversation, setActiveConversation] = useState(null);
   const [expanded, setExpanded] = useState(false);
 
+  // When initialDossier changes (user clicked chat from a dossier), switch to new conversation form
+  useEffect(() => {
+    if (initialDossier) {
+      setView('new');
+      setActiveConversation(null);
+    }
+  }, [initialDossier?.id]);
+
   const openThread = conv => {
     setActiveConversation(conv);
     setView('thread');
@@ -1035,8 +1112,12 @@ export default function ChatBubble({ currentUser, dossiers, users }) {
   useEffect(() => {
     injectKeyframes();
     const handler = e => {
-      setChatDossier(e.detail);
-      setOpen(true);
+      // Force re-render by clearing then setting, so ChatPanel/NewConversationForm detect the change
+      setChatDossier(null);
+      setTimeout(() => {
+        setChatDossier(e.detail);
+        setOpen(true);
+      }, 0);
     };
     window.addEventListener('open-chat-dossier', handler);
     return () => window.removeEventListener('open-chat-dossier', handler);

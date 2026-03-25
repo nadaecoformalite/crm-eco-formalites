@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
-const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:3001';
+const API_BASE = import.meta.env.VITE_API_URL?.replace('/api', '') || '';
 
 // ── Load Fabric.js from CDN ────────────────────────────────────────────────────
 

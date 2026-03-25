@@ -4,7 +4,7 @@ import Tesseract from "tesseract.js";
 import EmailModule from "./EmailModule.jsx";
 import GEDModule, { DOC_CATEGORIES } from "./GEDModule.jsx";
 import ChatBubble, { openChatForDossier } from "./ChatModule.jsx";
-import { lookupUrbanisme, updateUserSmtp, login as apiLogin, logout as apiLogout, getToken } from "./api.js";
+import { lookupUrbanisme, updateUserSmtp, login as apiLogin, logout as apiLogout, getToken, uploadDocuments } from "./api.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
 const LOGO_SRC = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQEAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADb/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCABaAH0DASIAAhEBAxEB/8QAHAABAQEAAwEBAQAAAAAAAAAAAAcIAwUGBAEJ/8QANxAAAQMDAgQEBAQFBQEAAAAAAQIDBAAFEQYHEiExQQgTUXEUIjJhFUJSgSRygpGhFhcjM2Lh/8QAGwEBAAEFAQAAAAAAAAAAAAAAAAYBAwQFBwL/xAA1EQABAwIEBQEFBwUBAAAAAAABAgMRAAQFBiExEkFRYXGBBxUiMqETFEJSkZLBIyRiovCx/9oADAMBAAIRAxEAPwD+ntKUpSlKUpSlKUpSlKUpSlKUpSlKUpSlKUpSlKUpSlKUpSldbqHUlh0nanb3qO6x7fBZ+t55WBk9AO5J7AZJr7332YrDkmQ4ltplBcWtRwEpAySf2rCG4etdVb/7is22yMvSIy31RrLABwhLfd5XYEgFSlHonl0FR/MGOjBWkhCeJ1ZhKf5+o03JMd6leVMsqzE+suL4GWxK1dB0E6SYOp0ABPY3C9eMzREOSpmx6au90aScecoojpV9wFZOPcCvv0r4vNur3KRDvsK4WFThADshKXWQfutHT3IxXX6R8HejYUBtetLrOuc9QBcTFd8hhB7hOBxK9yR7CodvjpTarR18RZtvb5PnSmiUz2XHEvMMH9IdwCVeqeePXPKope4nmXC2he3akBJ/AYnx1/RRNTrDsGybjb5w6xQ4VgfOOKPMnQeqQDW74kuLPjNTYMlqRHfSFtOtLCkLSehBHIip5uJv/t3txIXbblcHJ1zR9UGCkOOI/nOQlHsTn7VnvTuutS7QbEM/C3h8XPWMl1doYUQU26In5XH0A8wpR6Dpkg9jnqNl9gLzuyXdRXe4PW6xh5SVSccciY5n5uDi7Z6rOefY86zbjNV5dhq1w1n+utIUZ1CQde3LWTsCNJMVrbXI+H2BfvsYf/tm1FKSNCsgwep0MpgSSQSCAJNUb8aumy+Eu6EuyGc/WmS0pWPXh/8AtVnbzePQe5qFI03dsTW08TkGSnypCB68J+ofdJIrxD/hC2nchmOwu9svcOBIE3iVn1KSnhPtgVGpfh61xondnTtmtF3eEWfLLsO9x08C47bY43eMdErCAeWeFWceoqn33MuFLQu8Ql1CiAeGJEmBsBGvUEd6r7tybjjS28PWph1KSocUwQBJ0JVOnIEHnBrYl6vln05bXrxfrlHgQo6eJx99YSlI9z1PoOpqH37xkaDt8lUexWC63dCTjzhwsNq+6ePmR+wqKbw7iag3r1+3p/TwelW1mUYdohtnlIXnBfUOmVYJBPJKfTnVg0V4O9MRbc2/ry7TJ89aQpbEN3yWGj+kHHEv3yPaqu47iuNXK2MESA2jQrPM+sjxoTGulUYyxgeXbNu5zIsl1wSG0zIHeIM9SSBOmsV2OmvGFt7dpSIt/tdzsYWcB90JeZT/ADFHMD9quFuuVvu8Fi52uazLiSUBxl5lYWhaT3BHWs5bgeD20Ktzs7bm6SmZrSSoQZzocaex+VK8AoPpnI9qnvh33Su+22tUaI1At5mz3KWYciM/kGDMKuELAP05V8qh05g9q9W2PYnhV0i0xtI4V6BY2nvGkddARvtXi8yxg2OWLl9ltZ429VNq3jtOs9NSDtoa2vSlKnlcvpSlKUrwO/dxk2rZ3VcuIopcNvUyCOoDig2f8KNQPwfQ7JCumqtY3iRHjos8JllLzyglLCHFLUtWT05NpH9xV633u+lLftjfIOq7q3DaucN2NHSfmcdeKcoCEjmohXCT6d8VgViVOTGcgNyXENS1N+cylwpbcUk/LxDocEnGema5nmy/Th2NMXUBfAk/DPP4onpuD6V2bIuFKxbLl1ZSW/tFj4o3T8MgddAR2nWr5vb4oJ2pRI0vt3Ieg2hWW5FyGUPyx0KW+7aD6/Ur7Dr+bJ+GCfqb4fU+4kd6DaDh1i3HKH5Y6gud20H0+oj0qh7HeGq06URF1brT4a63lSUvRmEEORomRkKB6OL/APXQfl9att+v1o0zaZN8vs9qHBiILjrzqsAAdvuT2A5k1m2GAP4k570x9U8wjkBvr0Hb9xOorXYpmm2wdn3JlZMSYU4NVKO3w8yf8v2gCDWMPFa40xuYzYYLDceFZ7RGjxWG0hKGkniVhIHQdK2FoayxNO6NslkgtJbZhwWWwAOp4AVH3JJJ+5rEMmRP343uS7GjuIRe7ghKEEZLEJvGVK9MNpJP3OK2Nt5urpLcN26wLBKQmRZpbkVbClDiW0hXCl5A7oVjkR079qt5VuGHsSurqQA4qEdwJJA8Dh08VdzxaXNvg9lZQSWkcTkawVQAT5Vxies9a9pXkt27i/aNsdUXKNkPMWqSW1DqlRbKcj2zXranG4uvNHSLuzs3PnNquGrIsmEopUCIhW0oNlz0K1ckjrn9szXEnUNWqwpQSVDhE/mVoPrXOcGYcevWyhBUEHiUB+VOqj4gH/yoB4N7JCm7gXO7PoSp21WwCOD+VTi+FSh/Skj9zWxqwdsprVzZvdJbeqG1xoxLlouySDlghfJwjuErGT/5JNbsiyo06M1MhSG32HkhbbragpK0noQRyIqL5EfaOHG3TotKjxDnrsf49KmntOtn04uLpWra0p4Ty03E+dfWa5axB4srPFsu7T82AlLarlb2JzgQMYeBUgq9z5aT71tW6XS3WW3yLtdprMSHFQXHnnVBKEJHUk1g/XN6m78bxkWVlzy7tJat1vSoYKIqeXmKHblxuH0zirWfHW1WbdqNXFKHCOfMT9Y9avey9h5GIO3x0ZQg8R5bgx9J7AVufTE566aatNzkHLsuCw+v+ZbaVH/Jrs64YURmBDYgRk8LMZpLLY9EpAA/wK5qnDQUlACt4rmrykrcUpAgEmPFKmW8O+untq4qoTbKrpf3m+KPAaBwjPRbygPkT9up7DuKbXEuHEdWXHIrK1K6qUgEmrF63cPMlFssIUeZEx4EjX/orKw560YuEuXjZcQPwhXDPkwdOsa9xWB4ds3R8Q2tVOuF6ZKV/wBsh5Km4kBknoB0Sn0SMqV9zzqpa68H0q36biy9C3VdxusVr+OjyiECWr9TXZBHThJwR3z11Q0wywCGWUNg8zwpAz/avxyTHZUlDr7aFL+kKUAT7VFbbJNmGl/fVFxxe6tiPG+vUmZ8VN7z2kYgXmvdyEstN7IGoPY6DToBEb761gK2643q2qzY2LhfrM20SBElRittH8qXEqSP6aL/AN6d7LgzGeTfL8UrygOILcVkn8x5JbT71vx8RFFDUkNErOEJcx8x+wPWv1TkaKlCFLaZCjhIJCQT6CsQZHcUPsXLtZa/L/xI+lZ59pTSSbhqwbD5/Hpv1+UK/wBvWo9tD4eLfoPTNyavU5bt/vsRcSVMiL4DEaWMeWwojII6lWOZA5YFZ41rsjujtFevxSxtz5cSMriiXa1BQcQntxpR8yD69U+hrdlK219lKxurZthqWy38pG/eesnXr3rRYbn3E7G8dun4dDvzJVtpoI6QNI1Ebg1gZzfTfGZHFoGr7wSfkw1ESl8/1pRx5/fNek2o8O2vdbXyPqLVYn2O2ofTKclPqKZshQIUPLB+ZJJA+dXTqATW0Uxo6XPNSw2F/qCRn+9cmQO/WtexkvjdS5iFwp0J2Bn+ST+kVtbr2jFDCmsKtEMFW6hBPoAlInzPioNv/wCHU69eVrDRflM34ICJUZxXC3OSkYB4uiXAOWTyIxnGM1na36o3q2hcVZ48q/WNCFH+FfYK2AfVKVpUj901v74qN5vk/ENeZnHBxjizjOMe1fM5cbO7cfwN2ZFXO8rz/hVLSXPLzji4euM96y8Tyk1d3BvLR0suHcp2PfQggnnB16TWDgufX7C0FhfspuGhsFbgdJIIIHKRI2mNKwVKuW9O88pq3vrvt/HFlLIaLcZB/UQAlse5rTmwewLO2LatR6idZl6jlNeX/wAfNuG2eqEHuo/mV+w5czYmlRkKMZktpUgBRbTgFIPQ47VyV6wrKbNhcffLlwuujYq5d9yZ8nxXjHM9XGKWvu+zaSwyd0p3PaQAAOoAE8zFKUpUsqCUpSlKUqT3rbC66m3lkarmNWwWmLBtyGvjraJanVodeW4llfmp8kgFOTwnmQeeMVWKUpUN3J0pLmao1K9edu7zqmRdojLOmJkJ1Ibty0tcJQVlaTEUHsul3GCCMElPDXDuXthuHqi5Wl1iDp+9zLXo9+M69eIy3o0i5FTXJsJdbLa18KzxkEAdhV4pSlRq+7Zam1A5twbFqC+2aXpqwyw1eJPA4+xLU3DQgS2OPgfK0B8LRkjIJCgQlVfDC0Jr/Su02pNAaPYnO3S86gmRYk+5TStaIkhwF6a66CVAlBdUOEZC1IASB0udKUqFR9NbiWHZOfoe4WB5+Xpu7wfwtFrkKf8AibW1OYfQhpbhStam2QtrC8E+WOua9PrX8d11E0LdLJp28wxB1hElzWJjXw7zUVtt5K3Fp4uaMqTy55yOVU6lKVPRtxZhvKrW3+lomPwkH47gHF8b5xBPXPF5ffHTvXjdD6Xuls3u1DdbxpqUBMvMuREmrsKVp8lUZsIUJ3m5Sn5VpCODqccutXSlKVCNN6SvVp3veusTR90W1Iuk+RNnXJhA8hlxKuByPNadHnNKPlhMZxtSmwSMpCATd6UpSlKUpSlKUpSlKUpSlKUpSlKUpSlKUpSlKUpSlKUpSlKUpSv/2Q==";
@@ -442,7 +442,39 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--or);cursor:pointe
 .pr-ov{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:center;justify-content:center;padding:20px;}
 .pr-box{background:#fff;border-radius:var(--rl);max-width:800px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shl);display:flex;flex-direction:column;}
 .pr-hdr{padding:12px 16px;background:var(--bg3);border-bottom:1.5px solid var(--bd);display:flex;justify-content:space-between;align-items:center;}
-@media(max-width:768px){.sb{transform:translateX(-100%);}.sb.open{transform:translateX(0);}.main{margin-left:0;}.content{padding:13px;}.topbar{padding:0 13px;}.tb-flt{display:none;}.av-body{grid-template-columns:1fr;}.av-left{border-right:none;border-bottom:1.5px solid var(--bd);}}
+@media(max-width:768px){
+.sb{transform:translateX(-100%);}.sb.open{transform:translateX(0);}
+.main{margin-left:0;}
+.content{padding:10px;}
+.topbar{padding:0 8px;height:48px;gap:4px;}
+.mob-burger{display:flex!important;}
+.tb-flt{display:none;}
+.mob-flt-panel{display:flex!important;}
+.av-body{grid-template-columns:1fr;}.av-left{border-right:none;border-bottom:1.5px solid var(--bd);}
+.modal{max-width:100%;max-height:100vh;border-radius:0;margin:0;}
+.mhdr{padding:12px 14px 10px;flex-wrap:wrap;gap:8px;}
+.mbdy{padding:14px;}
+.mftr{padding:10px 14px;}
+table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;}
+.scard{padding:14px!important;}
+.dash-grid-2{grid-template-columns:1fr!important;}
+.dash-grid-3{grid-template-columns:1fr!important;}
+.dash-grid-kpi{grid-template-columns:1fr!important;}
+.dash-donut-row{flex-direction:column!important;align-items:center!important;}
+.modal-form-grid{grid-template-columns:1fr!important;}
+.modal-form-right{border-left:none!important;border-top:1.5px solid var(--bd)!important;padding-left:0!important;padding-top:16px!important;}
+.tb-xls{display:none!important;}
+.dtog{width:30px!important;height:30px!important;font-size:14px!important;}
+.toast-c{left:10px;right:10px;bottom:10px;}.toast{min-width:auto;max-width:100%;}
+.ged-3pane{flex-direction:column!important;min-height:auto!important;}
+.ged-sidebar{width:100%!important;min-width:auto!important;flex-direction:row!important;overflow-x:auto!important;overflow-y:hidden!important;border-right:none!important;border-bottom:1.5px solid var(--bd)!important;max-height:none!important;}
+.ged-sidebar>div:first-child{display:none!important;}
+.ged-sidebar button{white-space:nowrap!important;min-width:auto!important;width:auto!important;padding:8px 10px!important;}
+.ged-center{flex:1!important;min-height:250px!important;}
+.ged-preview{width:100%!important;min-width:auto!important;max-width:none!important;border-left:none!important;border-top:1.5px solid var(--bd)!important;max-height:350px!important;}
+.ged-empty-preview{display:none!important;}
+.tab{padding:8px 12px!important;font-size:12px!important;}
+}
 `;
 
 // ── ICONS ──
@@ -749,6 +781,10 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
   const [sc,setSc]=useState(false);const [dpR,setDpR]=useState(null);
   const [cdSc,setCdSc]=useState(false);const [cdR,setCdR]=useState(null);
   const [iCmt,setICmt]=useState("");const [newOrg,setNewOrg]=useState("");const [showOrg,setShowOrg]=useState(false);
+  const [pendingFiles,setPendingFiles]=useState([]);const [fileDrag,setFileDrag]=useState(false);
+  const fileDropRef=useRef();
+  const addPendingFiles=(files)=>{const arr=Array.from(files);setPendingFiles(p=>[...p,...arr]);};
+  const removePendingFile=(idx)=>setPendingFiles(p=>p.filter((_,i)=>i!==idx));
   const pRef=useRef();const cdRef=useRef();
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const setW=(i,k,v)=>{const w=[...f.works];w[i]={...w[i],[k]:v};set("works",w);};
@@ -779,7 +815,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
     const id=dossierId(f.dp_number,fallback);
     const cmts=[...(f.comments||[])];
     if(iCmt.trim())cmts.push({author:currentUser.name,date:now,text:iCmt,from_client:false});
-    onSave({...f,client:fullName,id,_oldId:initial?.id||fallback,created:initial?.created||now,updated:now,comments:cmts});
+    onSave({...f,client:fullName,id,_oldId:initial?.id||fallback,created:initial?.created||now,updated:now,comments:cmts},pendingFiles);
   };
   return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
     <div className="modal">
@@ -789,7 +825,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
       </div>
       <div className="mbdy">
         {/* Layout: left form, right comments */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:20}}>
+        <div className="modal-form-grid" style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:20}}>
           <div>
             {/* Statut + Responsable en haut */}
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
@@ -882,10 +918,37 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
             </div>
           </div>
           {/* RIGHT: comments */}
-          <div style={{borderLeft:"1.5px solid var(--bd)",paddingLeft:20}}>
+          <div className="modal-form-right" style={{borderLeft:"1.5px solid var(--bd)",paddingLeft:20}}>
             <div className="sec">Commentaire initial</div>
             <textarea value={iCmt} onChange={e=>setICmt(e.target.value)} placeholder="Ajouter un commentaire..." style={{minHeight:120}}/>
             <div style={{fontSize:11,color:"var(--tx4)",marginTop:6}}>Ce commentaire sera envoye par email au client.</div>
+            {/* Documents joints */}
+            <div style={{marginTop:18}}>
+              <div className="sec" style={{marginBottom:8}}>Documents joints</div>
+              <div
+                onDragOver={e=>{e.preventDefault();setFileDrag(true);}}
+                onDragLeave={()=>setFileDrag(false)}
+                onDrop={e=>{e.preventDefault();setFileDrag(false);if(e.dataTransfer.files?.length)addPendingFiles(e.dataTransfer.files);}}
+                onClick={()=>fileDropRef.current?.click()}
+                style={{border:`2px dashed ${fileDrag?"var(--or)":"var(--bd2)"}`,borderRadius:"var(--r)",padding:"18px 14px",textAlign:"center",cursor:"pointer",background:fileDrag?"var(--or-l)":"var(--bg3)",transition:"all .15s"}}
+              >
+                <input ref={fileDropRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt" style={{display:"none"}} onChange={e=>{if(e.target.files?.length)addPendingFiles(e.target.files);e.target.value="";}}/>
+                <div style={{fontSize:24,marginBottom:4,opacity:.6}}>📂</div>
+                <div style={{fontSize:13,fontWeight:600,color:"var(--or)"}}>Glissez vos documents ici</div>
+                <div style={{fontSize:11,color:"var(--tx4)",marginTop:3}}>ou cliquez pour sélectionner · PDF, images, documents · 20 MB max</div>
+              </div>
+              {pendingFiles.length>0&&<div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>
+                {pendingFiles.map((pf,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"var(--bg2)",border:"1.5px solid var(--bd)",borderRadius:"var(--r)"}}>
+                  <span style={{fontSize:16,opacity:.7}}>{pf.type?.startsWith("image/")?"🖼️":pf.type?.includes("pdf")?"📄":"📎"}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{pf.name}</div>
+                    <div style={{fontSize:10,color:"var(--tx4)"}}>{(pf.size/1024).toFixed(0)} KB</div>
+                  </div>
+                  <button className="bic" onClick={e=>{e.stopPropagation();removePendingFile(i);}} style={{flexShrink:0}}><Ic n="x" s={11}/></button>
+                </div>)}
+                <div style={{fontSize:11,color:"var(--tx3)",fontWeight:600}}>{pendingFiles.length} fichier(s) prêt(s) à envoyer</div>
+              </div>}
+            </div>
           </div>
         </div>
       </div>
@@ -975,6 +1038,20 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
     save({docs:[...(d.docs||[]),...nd]});
     toast(nd.length+" fichier(s) ajoute(s)","s");
     addNotif({type:"doc",msg:nd.length+" doc(s) ajoute(s) — "+d.client,dossier_id:d.id,date:new Date().toISOString()});
+  };
+  // Upload libre drag & drop
+  const [freeDrag,setFreeDrag]=useState(false);
+  const [freeUploading,setFreeUploading]=useState(false);
+  const freeDropRef=useRef();
+  const handleFreeUpload=async(files)=>{
+    if(!files||!files.length)return;
+    setFreeUploading(true);
+    try{
+      await uploadDocuments(d.id,Array.from(files),"autre");
+      toast(files.length+" document(s) ajouté(s)","s");
+      addNotif({type:"doc",msg:files.length+" doc(s) ajouté(s) — "+d.client,dossier_id:d.id,date:new Date().toISOString()});
+    }catch(err){toast("Erreur upload : "+err.message,"e");}
+    finally{setFreeUploading(false);}
   };
   const tabs=["info","documents","avancement","commentaires",...(isSA?["paiement"]:[])];
   const tabLabel={info:"Informations",avancement:"Avancement",documents:"Documents",commentaires:"Commentaires",paiement:"Paiement"};
@@ -1087,13 +1164,14 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
         {tab==="avancement"&&<Avancement d={d} save={save} toast={toast}/>}
 
         {tab==="documents"&&<div>
-          {/* Scanner récépissé de dépôt */}
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,padding:"8px 12px",background:"var(--bg3)",borderRadius:"var(--r)",border:"1.5px solid var(--bd)"}}>
+          {/* Barre DP + bouton récépissé compact */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"6px 10px",background:"var(--bg3)",borderRadius:"var(--r)",border:"1.5px solid var(--bd)"}}>
             <div style={{flex:1,fontSize:12,color:"var(--tx3)"}}>
               {d.dp_number?<span>N° DP : <strong style={{color:"var(--or)"}}>{d.dp_number}</strong></span>:<span style={{fontStyle:"italic"}}>Aucun N° DP</span>}
             </div>
-            <button className="btn btn-s btn-sm" style={{fontSize:10,padding:"4px 9px",gap:4}} onClick={()=>dpScanRef.current?.click()} disabled={!!dpScanning}>
-              <Ic n="scan" s={10}/>{dpScanning?"Scan...":"Récépissé de dépôt"}
+            <button onClick={()=>dpScanRef.current?.click()} disabled={!!dpScanning}
+              style={{background:"var(--or)",color:"#fff",border:"none",borderRadius:6,padding:"4px 10px",fontSize:10,fontWeight:700,cursor:dpScanning?"not-allowed":"pointer",opacity:dpScanning?.6:1,display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+              <Ic n="scan" s={10} c="#fff"/>{dpScanning?"Scan...":"Récépissé"}
             </button>
             <input ref={dpScanRef} type="file" accept=".pdf,application/pdf,.jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" style={{display:"none"}}
               onChange={e=>{if(e.target.files?.[0])scanDpFromDoc(e.target.files[0]);e.target.value="";}}/>
@@ -1103,6 +1181,27 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
             <Ic n="check" s={11} c="var(--gr)"/><span><strong style={{color:"var(--gr)"}}>N° DP détecté</strong> — {dpScanResult}</span>
           </div>}
           {dpScanResult==="none"&&<div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:"var(--r)",padding:"5px 10px",fontSize:11,color:"#b45309",marginBottom:10}}>Aucun N° DP trouvé.</div>}
+          {/* Zone upload libre — catégorie "Autre" */}
+          <div
+            onDragOver={e=>{e.preventDefault();setFreeDrag(true);}}
+            onDragLeave={()=>setFreeDrag(false)}
+            onDrop={e=>{e.preventDefault();setFreeDrag(false);if(e.dataTransfer.files?.length)handleFreeUpload(e.dataTransfer.files);}}
+            onClick={()=>!freeUploading&&freeDropRef.current?.click()}
+            style={{border:`2px dashed ${freeDrag?"var(--or)":"var(--bd2)"}`,borderRadius:"var(--r)",padding:freeUploading?"14px":"16px 14px",textAlign:"center",cursor:freeUploading?"not-allowed":"pointer",background:freeDrag?"var(--or-l)":"var(--bg3)",transition:"all .15s",marginBottom:14}}
+          >
+            <input ref={freeDropRef} type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt" style={{display:"none"}} onChange={e=>{if(e.target.files?.length)handleFreeUpload(e.target.files);e.target.value="";}}/>
+            {freeUploading
+              ?<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                <div style={{width:28,height:28,border:"3px solid var(--or)",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+                <div style={{fontSize:12,color:"var(--tx3)",fontWeight:600}}>Envoi en cours...</div>
+              </div>
+              :<>
+                <div style={{fontSize:22,marginBottom:4,opacity:.6}}>📂</div>
+                <div style={{fontSize:13,fontWeight:600,color:"var(--or)"}}>Glissez vos documents ici</div>
+                <div style={{fontSize:11,color:"var(--tx4)",marginTop:2}}>ou cliquez pour sélectionner · classé automatiquement dans «Autre» · 20 MB max</div>
+              </>
+            }
+          </div>
           <GEDModule
             dossierId={d.id}
             dossierData={d}
@@ -1115,7 +1214,7 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
           />
         </div>}
 
-        {tab==="commentaires"&&<div style={{display:"grid",gridTemplateColumns:"1fr 310px",gap:20}}>
+        {tab==="commentaires"&&<div className="modal-form-grid" style={{display:"grid",gridTemplateColumns:"1fr 310px",gap:20}}>
           {/* ── Colonne gauche : commentaires ── */}
           <div>
             <div className="sec">Ajouter un commentaire</div>
@@ -1138,8 +1237,8 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
           {/* ── Colonne droite : Contact mairie + Urbanisme AI ── */}
           <div>
             {/* ── Recherche urbanisme — Annuaire Service Public ── */}
-            <div style={{background:"linear-gradient(135deg,#ede9fe,#e0e7ff)",border:"1.5px solid rgba(99,102,241,.3)",borderRadius:"var(--rl)",padding:14,marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:800,color:"#6366f1",textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>🏛 Recherche urbanisme</div>
+            <div style={{background:"var(--or-l)",border:"1.5px solid rgba(232,80,26,.25)",borderRadius:"var(--rl)",padding:14,marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:800,color:"var(--or)",textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>🏛 Recherche urbanisme</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 90px",gap:6,marginBottom:8}}>
                 <div className="fg">
                   <label className="lbl">Ville du dossier</label>
@@ -1151,7 +1250,7 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
                 </div>
               </div>
               <button className="btn btn-sm" disabled={urbLoading||!d.ville}
-                style={{background:"#6366f1",color:"#fff",border:"none",opacity:(urbLoading||!d.ville)?.5:1,width:"100%",justifyContent:"center",fontWeight:700}}
+                style={{background:"var(--or)",color:"#fff",border:"none",opacity:(urbLoading||!d.ville)?.5:1,width:"100%",justifyContent:"center",fontWeight:700}}
                 onClick={doUrbanismeLookup}>
                 {urbLoading?<><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Recherche en cours...</>:<>🔍 Rechercher mairie + communauté de communes</>}
               </button>
@@ -1325,7 +1424,7 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
 
       </div>
     </div>
-    {editing&&<DossierForm initial={d} onSave={u=>{setD(u);onUpdate(u);setEditing(false);toast("Modifie","s");}} onClose={()=>setEditing(false)} currentUser={currentUser} clientsOrg={[]} onAddOrg={()=>{}}/>}
+    {editing&&<DossierForm initial={d} onSave={async(u,files)=>{setD(u);onUpdate(u);setEditing(false);toast("Modifie","s");if(files&&files.length>0){try{await uploadDocuments(u.id,files,"autre");toast(files.length+" document(s) joint(s)","s");}catch(err){toast("Erreur upload : "+err.message,"e");}}}} onClose={()=>setEditing(false)} currentUser={currentUser} clientsOrg={[]} onAddOrg={()=>{}}/>}
   </div>;
 }
 
@@ -1434,7 +1533,7 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
     return mq&&ms&&ma&&mw&&mf&&mn&&mcd&&mud;
   }),[dossiers,globalQ,globalFilters]);
 
-  const create=d=>{const nd={...d,id:dossierId(d.dp_number,d.id),created_by:currentUser.id};setDossiers(p=>[nd,...p]);setCreating(false);toast("Dossier cree !","s");};
+  const create=async(d,files)=>{const nd={...d,id:dossierId(d.dp_number,d.id),created_by:currentUser.id};setDossiers(p=>[nd,...p]);setCreating(false);toast("Dossier cree !","s");if(files&&files.length>0){try{await uploadDocuments(nd.id,files,"autre");toast(files.length+" document(s) joint(s)","s");}catch(err){toast("Erreur upload : "+err.message,"e");}}};
   const upd=d=>{
     // Si l'ID a changé (DP extrait → nouvel ID), on retrouve l'ancien via _oldId
     const lookupId=d._oldId||d.id;
@@ -1754,7 +1853,7 @@ function Dashboard({dossiers}){
     </div>
 
     {/* KPIs */}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14,marginBottom:22}}>
+    <div className="dash-grid-kpi" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14,marginBottom:22}}>
       {[
         {l:"Total Dossiers",v:tot,ic:"folder",c:C1,bg:C1L},
         {l:"Chiffre d'Affaires",v:totalCA.toLocaleString("fr-FR",{maximumFractionDigits:0})+" €",ic:"euro",c:C2,bg:C2L},
@@ -1773,7 +1872,7 @@ function Dashboard({dossiers}){
     </div>
 
     {/* Graphiques principaux — row 1 */}
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+    <div className="dash-grid-2" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
       {/* Dossiers par Partenaire */}
       <div className="card" style={{padding:20}}>
         <h3 style={{fontSize:12,fontWeight:800,marginBottom:16,display:"flex",alignItems:"center",gap:8,color:"var(--tx2)"}}>
@@ -1800,8 +1899,8 @@ function Dashboard({dossiers}){
         <h3 style={{fontSize:12,fontWeight:800,marginBottom:16,display:"flex",alignItems:"center",gap:8,color:"var(--tx2)"}}>
           <DashIc type="pie" size={15} color="var(--tx4)"/>Statuts des DP
         </h3>
-        <div style={{display:"flex",alignItems:"center",gap:20}}>
-          <svg width="180" height="180" viewBox="0 0 180 180">
+        <div className="dash-donut-row" style={{display:"flex",alignItems:"center",gap:20}}>
+          <svg width="180" height="180" viewBox="0 0 180 180" style={{flexShrink:0}}>
             {donutSlices.map((sl,i)=>{
               const circ=2*Math.PI*donutR;
               const dashLen=circ*(sl.end-sl.start);
@@ -1832,7 +1931,7 @@ function Dashboard({dossiers}){
     </div>
 
     {/* Graphiques principaux — row 2 */}
-    <div style={{display:"grid",gridTemplateColumns:"1.2fr .8fr",gap:14,marginBottom:14}}>
+    <div className="dash-grid-2" style={{display:"grid",gridTemplateColumns:"1.2fr .8fr",gap:14,marginBottom:14}}>
       {/* Performance Administrative */}
       <div className="card" style={{padding:20}}>
         <h3 style={{fontSize:12,fontWeight:800,marginBottom:20,display:"flex",alignItems:"center",gap:8,color:"var(--tx2)"}}>
@@ -2088,7 +2187,7 @@ function Paiements({dossiers,setDossiers,currentUser,toast,clientsOrg=[],users=[
     const body=`Bonjour,\n\nVous avez ${partner.unpaid.length} dossier(s) en attente de paiement pour un total de ${total} € :\n\n${dossierLines}\n\nMerci de procéder au règlement dans les meilleurs délais.\n\nCordialement,\nEco-formalités`;
 
     try{
-      const API_URL=import.meta.env.VITE_API_URL||'http://localhost:3001/api';
+      const API_URL=import.meta.env.VITE_API_URL||'/api';
       const token=localStorage.getItem('auth_token');
       const res=await fetch(API_URL+'/emails/send',{method:'POST',headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify({to:email,to_name:partner.name,subject,body_html:body.replace(/\n/g,'<br>'),body_text:body,from_email:currentUser.email,from_name:currentUser.name})});
       if(res.ok)toast("Lien de paiement envoyé à "+email,"s");
@@ -2283,7 +2382,7 @@ function Admin({users,setUsers,toast}){
     if(users.find(u=>u.email===nEmail.trim())){toast("Cet email existe deja","e");return;}
     const initials=nName.trim().split(/\s+/).map(w=>w[0]).join("").toUpperCase().slice(0,2);
     try{
-      const res=await fetch((import.meta.env.VITE_API_URL||'http://localhost:3001/api')+'/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nName.trim(),email:nEmail.trim(),password:nPwd.trim(),role:nRole,initials})});
+      const res=await fetch((import.meta.env.VITE_API_URL||'/api')+'/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:nName.trim(),email:nEmail.trim(),password:nPwd.trim(),role:nRole,initials})});
       const data=await res.json();
       if(!res.ok){toast(data.error||"Erreur","e");return;}
       setUsers(p=>[...p,{id:data.user.id,name:nName.trim(),email:nEmail.trim(),role:nRole,initials,avatar:null}]);
@@ -2397,6 +2496,7 @@ export default function App(){
   const [toasts,setToasts]=useState([]);
   const [dark,setDark]=useState(false);
   const [sbOpen,setSbOpen]=useState(false);
+  const [mobFlt,setMobFlt]=useState(false);
   const [notifs,setNotifs]=useState([]);
   const [showNotifs,setShowNotifs]=useState(false);
   const [globalQ,setGlobalQ]=useState("");
@@ -2521,7 +2621,7 @@ export default function App(){
       {/* ── MAIN ── */}
       <div className="main">
         <div className="topbar">
-          <button className="bic" style={{display:"none"}} onClick={()=>setSbOpen(o=>!o)}><Ic n="menu" c="var(--tx2)"/></button>
+          <button className="bic mob-burger" style={{display:"none"}} onClick={()=>setSbOpen(o=>!o)}><Ic n="menu" c="var(--tx2)"/></button>
           {/*<div className="tb-ttl">{titles[page]||"CRM"}</div>*/}
 
           {/* Filters — compact, left-aligned (hidden for clients) */}
@@ -2556,6 +2656,12 @@ export default function App(){
             {hasFilter&&<button className="btn btn-d btn-sm" onClick={()=>setGlobalFilters({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""})}><Ic n="x" s={11}/>Réinitialiser</button>}
           </div>}
 
+          {/* Mobile filter button */}
+          {!isClient&&!isPartner&&<button className="mob-flt-panel bic" style={{display:"none",position:"relative"}} onClick={()=>setMobFlt(v=>!v)}>
+            <Ic n="filter" s={15} c={hasFilter?"var(--or)":"var(--tx3)"}/>
+            {hasFilter&&<span style={{position:"absolute",top:2,right:2,width:7,height:7,borderRadius:"50%",background:"var(--or)"}}/>}
+          </button>}
+
           {!isClient&&!isPartner&&<><input ref={topXlsRef} type="file" accept=".xlsx,.xls,.csv" style={{display:"none"}} onChange={e=>{if(e.target.files?.[0])topImportXLS(e.target.files[0]);e.target.value="";}}/>
           <button className="btn btn-s btn-sm tb-xls" onClick={()=>topXlsRef.current?.click()} style={{marginLeft:"auto"}}><Ic n="import" s={12} c="var(--gr)"/>Importer</button>
           <button className="btn btn-s btn-sm tb-xls" onClick={topExportXLS}><Ic n="dl" s={12} c="var(--bl)"/>Exporter</button></>}
@@ -2575,6 +2681,15 @@ export default function App(){
           </div>
         </div>
 
+        {/* Mobile filters panel */}
+        {mobFlt&&!isClient&&!isPartner&&<div style={{padding:"10px 12px",background:"var(--bg3)",borderBottom:"1.5px solid var(--bd)",display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+          <input className={"fsel"+(globalFilters.client_name?" on":"")} value={globalFilters.client_name} onChange={e=>{setGlobalFilters(f=>({...f,client_name:e.target.value}));if(e.target.value&&page!=="dossiers")setPage("dossiers");}} placeholder="Partenaire..." style={{flex:"1 1 120px",minWidth:100}}/>
+          <select className={"fsel"+(globalFilters.status?" on":"")} value={globalFilters.status} onChange={e=>setFilter("status",e.target.value)} style={{flex:"1 1 100px"}}><option value="">Statut</option>{ALL_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}</select>
+          <select className={"fsel"+(globalFilters.assignee?" on":"")} value={globalFilters.assignee} onChange={e=>setFilter("assignee",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Resp.</option>{EMPLOYEES.map(e=><option key={e}>{e}</option>)}</select>
+          <select className={"fsel"+(globalFilters.work?" on":"")} value={globalFilters.work} onChange={e=>setFilter("work",e.target.value)} style={{flex:"1 1 100px"}}><option value="">Travaux</option>{WORK_TYPES.map(t=><option key={t}>{t}</option>)}</select>
+          <select className={"fsel"+(globalFilters.formalite?" on":"")} value={globalFilters.formalite} onChange={e=>setFilter("formalite",e.target.value)} style={{flex:"1 1 100px"}}><option value="">Formalité</option>{FORMALITES.map(f=><option key={f}>{f}</option>)}</select>
+          {hasFilter&&<button className="btn btn-d btn-sm" style={{flex:"0 0 auto"}} onClick={()=>{setGlobalFilters({status:"",assignee:"",work:"",formalite:"",client_name:"",date_created:"",date_updated:""});setMobFlt(false);}}><Ic n="x" s={11}/>Reset</button>}
+        </div>}
         <div className="content">{pages[page]||pages.dashboard}</div>
       </div>
     </div>
