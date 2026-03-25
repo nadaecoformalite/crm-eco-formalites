@@ -791,25 +791,169 @@ function DocRow({ doc, onPreview, onEdit, onDelete, onVersions, onRename }) {
   );
 }
 
+// ── Preview Side Panel ────────────────────────────────────────────────────────
+
+function PreviewPanel({ doc, onClose, onEdit, onDelete, onVersions, onReplace, effectiveDossierId, onUploaded, onExtracted }) {
+  const canvasRef = useRef(null);
+  const [pageNum, setPageNum] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pdfDoc, setPdfDoc] = useState(null);
+  const replaceRef = useRef(null);
+
+  const url = `${API_BASE}${doc.url}`;
+  const isPdf = doc.mime_type === 'application/pdf';
+  const isImage = doc.mime_type?.startsWith('image/');
+  const cat = catMap[doc.category] || catMap.autre;
+
+  useEffect(() => {
+    setPageNum(1);
+    setPdfDoc(null);
+    if (!isPdf) return;
+    pdfjsLib.getDocument(url).promise.then(pdf => {
+      setPdfDoc(pdf);
+      setTotalPages(pdf.numPages);
+    }).catch(() => {});
+  }, [url, isPdf]);
+
+  useEffect(() => {
+    if (!pdfDoc || !canvasRef.current) return;
+    pdfDoc.getPage(pageNum).then(page => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const maxW = canvas.parentElement?.clientWidth || 400;
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = Math.min((maxW - 20) / baseViewport.width, 1.6);
+      const viewport = page.getViewport({ scale });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      page.render({ canvasContext: canvas.getContext('2d'), viewport });
+    });
+  }, [pdfDoc, pageNum]);
+
+  const handleReplace = async (e) => {
+    const files = e.target.files;
+    if (!files?.length || !effectiveDossierId) return;
+    try {
+      await uploadDocuments(effectiveDossierId, Array.from(files), doc.category);
+      if (onUploaded) onUploaded({ saved: Array.from(files) });
+    } catch (err) { alert('Erreur : ' + err.message); }
+    e.target.value = '';
+  };
+
+  return (
+    <div style={{ width: 420, minWidth: 320, maxWidth: 480, background: 'var(--bg2)', borderLeft: '1.5px solid var(--bd)',
+      display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden', flexShrink: 0 }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px', borderBottom: '1.5px solid var(--bd)', background: 'var(--bg3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+          <FileIcon mime={doc.mime_type} size={32} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {doc.original_name || doc.name}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--tx4)', marginTop: 2 }}>
+              {doc.size_human} · v{doc.version}
+            </div>
+          </div>
+          <button className="bic" onClick={onClose} style={{ fontSize: 14, flexShrink: 0 }}>✕</button>
+        </div>
+        {/* Metadata */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: cat.color, background: cat.bg,
+            padding: '2px 8px', borderRadius: 6, border: `1px solid ${cat.color}30` }}>
+            {cat.icon} {cat.label}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--tx4)', background: 'var(--bg3)',
+            padding: '2px 8px', borderRadius: 6, border: '1px solid var(--bd)' }}>
+            {new Date(doc.created).toLocaleDateString('fr-FR')}
+          </span>
+          {doc.uploaded_by && (
+            <span style={{ fontSize: 10, color: 'var(--tx4)', background: 'var(--bg3)',
+              padding: '2px 8px', borderRadius: 6, border: '1px solid var(--bd)' }}>
+              {doc.uploaded_by}
+            </span>
+          )}
+        </div>
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          <a href={url} download={doc.original_name || doc.name} target="_blank" rel="noreferrer"
+            className="btn btn-p btn-sm" style={{ fontSize: 11, gap: 4 }}>
+            <span>↓</span> Telecharger
+          </a>
+          {isPdf && (
+            <button className="btn btn-s btn-sm" style={{ fontSize: 11 }} onClick={() => onEdit(doc)}>
+              ✏ Editer
+            </button>
+          )}
+          <button className="btn btn-s btn-sm" style={{ fontSize: 11 }} onClick={() => onVersions(doc)}>
+            🕐 Versions
+          </button>
+          {effectiveDossierId && (
+            <button className="btn btn-s btn-sm" style={{ fontSize: 11 }}
+              onClick={() => replaceRef.current?.click()}>
+              ↻ Remplacer
+            </button>
+          )}
+          <button className="btn btn-sm" style={{ fontSize: 11, background: 'var(--re-l)', color: 'var(--re)',
+            border: '1px solid var(--re)' }} onClick={() => onDelete(doc)}>
+            ✕ Supprimer
+          </button>
+          <input ref={replaceRef} type="file" style={{ display: 'none' }} onChange={handleReplace}
+            accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt" />
+        </div>
+      </div>
+
+      {/* Preview area */}
+      <div style={{ flex: 1, overflow: 'auto', background: '#1a1a18', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'flex-start', padding: 12 }}>
+        {isImage && (
+          <img src={url} alt={doc.name} style={{ maxWidth: '100%', borderRadius: 6 }} />
+        )}
+        {isPdf && (
+          <canvas ref={canvasRef} style={{ maxWidth: '100%', borderRadius: 4,
+            boxShadow: '0 4px 16px rgba(0,0,0,.4)' }} />
+        )}
+        {!isImage && !isPdf && (
+          <div style={{ color: '#fff', textAlign: 'center', paddingTop: 60 }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📄</div>
+            <div style={{ fontSize: 12 }}>Apercu non disponible</div>
+          </div>
+        )}
+      </div>
+
+      {/* PDF pagination */}
+      {isPdf && totalPages > 1 && (
+        <div style={{ padding: '8px 16px', borderTop: '1.5px solid var(--bd)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', gap: 10, background: 'var(--bg3)' }}>
+          <button className="btn btn-s btn-sm" disabled={pageNum <= 1}
+            onClick={() => setPageNum(p => p - 1)} style={{ minWidth: 28 }}>←</button>
+          <span style={{ fontSize: 12, color: 'var(--tx3)' }}>{pageNum} / {totalPages}</span>
+          <button className="btn btn-s btn-sm" disabled={pageNum >= totalPages}
+            onClick={() => setPageNum(p => p + 1)} style={{ minWidth: 28 }}>→</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main GEDModule ────────────────────────────────────────────────────────────
 
 /**
- * GEDModule — can be used in two modes:
- *   1. Standalone page: dossierId=null → shows all documents + filter by dossier
- *   2. Embedded in dossier detail: dossierId="DOS-..." → scoped to that dossier
+ * GEDModule — Three-Pane Layout:
+ *   Left: category sidebar | Center: file list | Right: preview panel
+ *   Modes: standalone (all dossiers) or embedded (scoped to one dossier)
  */
 export default function GEDModule({ dossierId = null, dossierData = null, dossiers = [], onDossierUpdate }) {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState('all');
   const [selectedDossier, setSelectedDossier] = useState(dossierId || '');
-  const [previewing, setPreviewing] = useState(null);
+  const [selectedDoc, setSelectedDoc] = useState(null);
   const [editing, setEditing] = useState(null);
   const [versioning, setVersioning] = useState(null);
-  const [extractedBanner, setExtractedBanner] = useState(null); // { data, dossierId }
+  const [extractedBanner, setExtractedBanner] = useState(null);
   const [search, setSearch] = useState('');
   const [toast, setToast] = useState(null);
-  const [viewMode, setViewMode] = useState('grid'); // 'list' | 'grid'
 
   const effectiveDossierId = dossierId || selectedDossier;
 
@@ -832,25 +976,21 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
   useEffect(() => { reload(); }, [reload]);
 
   const handleUploaded = useCallback((result) => {
-    showToast(`${result.saved.length} fichier(s) uploadé(s)`, 'success');
+    showToast(`${result.saved.length} fichier(s) uploade(s)`, 'success');
     reload();
   }, [reload, showToast]);
 
   const handleExtracted = useCallback(async (data, dId) => {
     const hasData = data?.dp_number || data?.kbis?.siret || data?.kbis?.company_name;
     if (!hasData) return;
-
-    // Récépissé détecté → application immédiate, pas de bannière
     if (data.forceApply && data.dp_number) {
       try {
         await applyExtractedData(dId, { dp_number: data.dp_number });
         if (onDossierUpdate) onDossierUpdate(dId, { dp_number: data.dp_number });
-        showToast(`✓ N° DP extrait du récépissé et enregistré : ${data.dp_number}`, 'success');
-      } catch { showToast('Extraction DP réussie mais erreur d\'enregistrement', 'error'); }
+        showToast(`N° DP extrait du recepisse et enregistre : ${data.dp_number}`, 'success');
+      } catch { showToast('Extraction DP reussie mais erreur d\'enregistrement', 'error'); }
       return;
     }
-
-    // Sinon bannière de confirmation
     setExtractedBanner({ data, dossierId: dId });
   }, [onDossierUpdate, showToast]);
 
@@ -858,11 +998,9 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
     if (!extractedBanner) return;
     try {
       await applyExtractedData(extractedBanner.dossierId, extractedBanner.data);
-      showToast('Données appliquées au dossier ✓', 'success');
+      showToast('Donnees appliquees au dossier', 'success');
       if (onDossierUpdate) onDossierUpdate(extractedBanner.dossierId, extractedBanner.data);
-    } catch (e) {
-      showToast('Erreur : ' + e.message, 'error');
-    }
+    } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
     setExtractedBanner(null);
   };
 
@@ -870,12 +1008,12 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
     if (!window.confirm(`Supprimer "${doc.original_name || doc.name}" ?`)) return;
     try {
       await deleteDocument(doc.id);
-      showToast('Document supprimé', 'success');
+      if (selectedDoc?.id === doc.id) setSelectedDoc(null);
+      showToast('Document supprime', 'success');
       reload();
     } catch (e) { showToast('Erreur : ' + e.message, 'error'); }
   };
 
-  // Group documents by category
   const grouped = documents.reduce((acc, d) => {
     (acc[d.category] = acc[d.category] || []).push(d);
     return acc;
@@ -883,35 +1021,29 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
 
   const filteredDocs = category === 'all' ? documents : (grouped[category] || []);
 
-  // Stats
-  const stats = DOC_CATEGORIES.map(c => ({
-    ...c, count: (grouped[c.key] || []).length,
-  })).filter(c => c.count > 0);
-
   const isEmbedded = !!dossierId;
 
   return (
-    <div style={isEmbedded ? {} : { maxWidth: 1100, margin: '0 auto' }}>
-      {/* CSS keyframe for spinner */}
+    <div style={isEmbedded ? {} : { maxWidth: 1400, margin: '0 auto' }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 
-      {/* Header — only in standalone mode */}
+      {/* Header */}
       {!isEmbedded && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div>
-            <h2 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.025em', marginBottom: 4 }}>
-              📂 GED — Gestion Electronique de Documents
+            <h2 style={{ fontSize: 20, fontWeight: 800, letterSpacing: '-.025em', marginBottom: 4, color: 'var(--tx)' }}>
+              GED — Gestion Electronique de Documents
             </h2>
             <p style={{ color: 'var(--tx3)', fontSize: 13 }}>
-              Stockage, classement automatique et prévisualisation de tous vos documents
+              Stockage, classement et previsualisation de tous vos documents
             </p>
           </div>
         </div>
       )}
 
-      {/* Dossier selector — standalone mode */}
+      {/* Top bar: search + dossier selector */}
       {!isEmbedded && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 10, marginBottom: 14 }}>
           <div style={{ position: 'relative' }}>
             <svg style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--tx4)', pointerEvents: 'none' }}
               width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -931,187 +1063,222 @@ export default function GEDModule({ dossierId = null, dossierData = null, dossie
         </div>
       )}
 
-      {/* Category filter pills + view toggle */}
-      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 14, alignItems: 'center' }}>
-        <button className={`btn btn-sm ${category === 'all' ? 'btn-p' : 'btn-s'}`}
-          onClick={() => setCategory('all')} style={{ fontSize: 11 }}>
-          Tous {documents.length > 0 && `(${documents.length})`}
-        </button>
-        {DOC_CATEGORIES.map(c => {
-          const cnt = (grouped[c.key] || []).length;
-          if (!isEmbedded && cnt === 0) return null;
-          const active = category === c.key;
-          return (
-            <button key={c.key}
-              className={`btn btn-sm ${active ? 'btn-p' : 'btn-s'}`}
-              onClick={() => setCategory(c.key)}
-              style={{ fontSize: 11, ...(active ? {} : {}) }}>
-              {c.icon} {c.label} {cnt > 0 && <span style={{ fontSize: 10, fontWeight: 700, opacity: .7 }}>({cnt})</span>}
-            </button>
-          );
-        })}
-        {/* View mode toggle */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 2, flexShrink: 0 }}>
-          <button className="dtog" title="Vue grille"
-            onClick={() => setViewMode('grid')}
-            style={viewMode === 'grid' ? { background: 'var(--or)', color: '#fff', borderColor: 'var(--or)' } : {}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-          </button>
-          <button className="dtog" title="Vue liste"
-            onClick={() => setViewMode('list')}
-            style={viewMode === 'list' ? { background: 'var(--or)', color: '#fff', borderColor: 'var(--or)' } : {}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
-          </button>
-        </div>
-      </div>
-
       {/* Extraction banner */}
       {extractedBanner && (
-        <ExtractionBanner
-          data={extractedBanner.data}
-          onApply={handleApplyExtracted}
-          onDismiss={() => setExtractedBanner(null)}
-        />
+        <ExtractionBanner data={extractedBanner.data}
+          onApply={handleApplyExtracted} onDismiss={() => setExtractedBanner(null)} />
       )}
 
-      {/* Drop zones — one per category (when dossier is selected) */}
-      {effectiveDossierId && (
-        <div style={{ marginBottom: 20 }}>
-          {/* Show drop zone for currently selected category */}
-          {category !== 'all' && (
-            <DropZone
-              dossierId={effectiveDossierId}
-              category={category}
-              onUploaded={handleUploaded}
-              onExtracted={handleExtracted}
-            />
+      {/* ═══ THREE-PANE LAYOUT ═══ */}
+      <div style={{ display: 'flex', gap: 0, border: '1.5px solid var(--bd)', borderRadius: 'var(--rl)',
+        overflow: 'hidden', background: 'var(--bg2)', minHeight: isEmbedded ? 400 : 520, boxShadow: 'var(--sh)' }}>
+
+        {/* ── LEFT PANE: Category sidebar ── */}
+        <div style={{ width: 200, minWidth: 180, background: 'var(--bg3)', borderRight: '1.5px solid var(--bd)',
+          display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'auto' }}>
+          <div style={{ padding: '14px 12px 8px', fontSize: 10, fontWeight: 800, textTransform: 'uppercase',
+            letterSpacing: '.08em', color: 'var(--tx4)' }}>
+            Categories
+          </div>
+          {/* All */}
+          <button onClick={() => setCategory('all')}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', border: 'none',
+              background: category === 'all' ? 'var(--or-l)' : 'transparent', cursor: 'pointer',
+              borderLeft: category === 'all' ? '3px solid var(--or)' : '3px solid transparent',
+              transition: 'all .15s', width: '100%', textAlign: 'left' }}>
+            <span style={{ fontSize: 14 }}>📋</span>
+            <span style={{ fontSize: 12, fontWeight: category === 'all' ? 700 : 500,
+              color: category === 'all' ? 'var(--or)' : 'var(--tx2)', flex: 1 }}>
+              Tous
+            </span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--or)', background: 'var(--or-l)',
+              padding: '1px 6px', borderRadius: 10, minWidth: 18, textAlign: 'center' }}>
+              {documents.length}
+            </span>
+          </button>
+          {DOC_CATEGORIES.map(c => {
+            const cnt = (grouped[c.key] || []).length;
+            const active = category === c.key;
+            return (
+              <button key={c.key} onClick={() => setCategory(c.key)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', border: 'none',
+                  background: active ? 'var(--or-l)' : 'transparent', cursor: 'pointer',
+                  borderLeft: active ? '3px solid var(--or)' : '3px solid transparent',
+                  transition: 'all .15s', width: '100%', textAlign: 'left' }}>
+                <span style={{ fontSize: 14 }}>{c.icon}</span>
+                <span style={{ fontSize: 12, fontWeight: active ? 700 : 500,
+                  color: active ? 'var(--or)' : 'var(--tx2)', flex: 1, overflow: 'hidden',
+                  textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {c.label}
+                </span>
+                {cnt > 0 && (
+                  <span style={{ fontSize: 10, fontWeight: 700, color: active ? 'var(--or)' : 'var(--tx4)',
+                    background: active ? 'var(--bg2)' : 'var(--bg)', padding: '1px 6px', borderRadius: 10,
+                    minWidth: 18, textAlign: 'center' }}>
+                    {cnt}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+          {/* Upload zone at bottom of sidebar */}
+          {effectiveDossierId && category !== 'all' && (
+            <div style={{ padding: '10px 10px', marginTop: 'auto', borderTop: '1.5px solid var(--bd)' }}>
+              <DropZone dossierId={effectiveDossierId} category={category}
+                onUploaded={handleUploaded} onExtracted={handleExtracted} />
+            </div>
           )}
-          {/* In standalone mode with "all" selected, show a general drop zone */}
-          {category === 'all' && (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 6, marginBottom: 14 }}>
+        </div>
+
+        {/* ── CENTER PANE: File list (table) ── */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
+          {/* Embedded search bar */}
+          {isEmbedded && (
+            <div style={{ padding: '10px 14px', borderBottom: '1.5px solid var(--bd)', background: 'var(--bg3)' }}>
+              <div style={{ position: 'relative' }}>
+                <svg style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: 'var(--tx4)', pointerEvents: 'none' }}
+                  width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input className="srch" value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="Rechercher..." style={{ paddingLeft: 28, fontSize: 12, height: 32 }} />
+              </div>
+            </div>
+          )}
+
+          {/* Drop zone when "all" category and dossier selected */}
+          {effectiveDossierId && category === 'all' && (
+            <div style={{ padding: '8px 14px', borderBottom: '1.5px solid var(--bd)', background: 'var(--bg3)',
+              display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               {DOC_CATEGORIES.slice(0, 6).map(c => (
-                <button key={c.key}
-                  className="btn btn-s"
-                  style={{ flexDirection: 'column', gap: 3, padding: '10px 8px', height: 'auto',
-                    justifyContent: 'center', border: '1.5px solid var(--bd)' }}
+                <button key={c.key} className="btn btn-s btn-sm"
+                  style={{ fontSize: 10, gap: 3, padding: '4px 8px' }}
                   onClick={() => setCategory(c.key)}>
-                  <span style={{ fontSize: 18 }}>{c.icon}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600 }}>Ajouter {c.label}</span>
-                  {(c.extractDP || c.extractKbis) && (
-                    <span style={{ fontSize: 9, color: 'var(--or)', background: 'var(--or-l)',
-                      padding: '1px 5px', borderRadius: 6, fontWeight: 600 }}>Auto</span>
-                  )}
+                  {c.icon} + {c.label}
                 </button>
               ))}
             </div>
           )}
-        </div>
-      )}
 
-      {!effectiveDossierId && !isEmbedded && (
-        <div style={{ background: 'var(--bg3)', border: '2px dashed var(--bd2)', borderRadius: 10,
-          padding: '24px', textAlign: 'center', color: 'var(--tx4)', marginBottom: 16, fontSize: 13 }}>
-          Sélectionnez un dossier pour uploader des documents
-        </div>
-      )}
-
-      {/* Documents list */}
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--tx4)' }}>
-          <div style={{ width: 28, height: 28, border: '3px solid var(--or)', borderTopColor: 'transparent',
-            borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 8px' }} />
-          Chargement...
-        </div>
-      ) : filteredDocs.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: 40, color: 'var(--tx4)', fontSize: 13 }}>
-          {effectiveDossierId ? 'Aucun document dans cette catégorie.' : 'Aucun document trouvé.'}
-        </div>
-      ) : category === 'all' ? (
-        // Grouped by category
-        DOC_CATEGORIES.map(c => {
-          const docs = grouped[c.key] || [];
-          if (docs.length === 0) return null;
-          return (
-            <div key={c.key} style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--tx2)', textTransform: 'uppercase',
-                letterSpacing: '.08em', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6,
-                padding: '6px 10px', background: 'var(--bg3)', borderRadius: 'var(--r)', border: '1.5px solid var(--bd)' }}>
-                <span style={{ fontSize: 14 }}>{c.icon}</span> {c.label}
-                <span style={{ background: 'var(--or-l)', color: 'var(--or)',
-                  borderRadius: 20, padding: '1px 8px', fontSize: 10, fontWeight: 700 }}>{docs.length}</span>
-              </div>
-              {viewMode === 'grid' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
-                  {docs.map(doc => (
-                    <DocCard key={doc.id} doc={doc}
-                      onPreview={setPreviewing}
-                      onEdit={setEditing}
-                      onDelete={handleDelete}
-                      onVersions={setVersioning} />
-                  ))}
-                </div>
-              ) : (
-                docs.map(doc => (
-                  <DocRow key={doc.id} doc={doc}
-                    onPreview={setPreviewing}
-                    onEdit={setEditing}
-                    onDelete={handleDelete}
-                    onVersions={setVersioning}
-                    onRename={() => {}} />
-                ))
-              )}
+          {!effectiveDossierId && !isEmbedded && (
+            <div style={{ padding: 24, textAlign: 'center', color: 'var(--tx4)', fontSize: 13 }}>
+              Selectionnez un dossier pour uploader des documents
             </div>
-          );
-        })
-      ) : viewMode === 'grid' ? (
-        // Grid for single category
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
-          {filteredDocs.map(doc => (
-            <DocCard key={doc.id} doc={doc}
-              onPreview={setPreviewing}
-              onEdit={setEditing}
-              onDelete={handleDelete}
-              onVersions={setVersioning} />
-          ))}
+          )}
+
+          {/* Table header */}
+          <div style={{ display: 'grid', gridTemplateColumns: '36px 1fr 90px 80px 70px', gap: 8,
+            padding: '8px 14px', borderBottom: '1.5px solid var(--bd)', background: 'var(--bg3)',
+            fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em', color: 'var(--tx4)' }}>
+            <span></span>
+            <span>Nom</span>
+            <span>Categorie</span>
+            <span>Date</span>
+            <span>Taille</span>
+          </div>
+
+          {/* File list */}
+          <div style={{ flex: 1, overflow: 'auto' }}>
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--tx4)' }}>
+                <div style={{ width: 24, height: 24, border: '3px solid var(--or)', borderTopColor: 'transparent',
+                  borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 8px' }} />
+                Chargement...
+              </div>
+            ) : filteredDocs.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: 'var(--tx4)', fontSize: 13 }}>
+                {effectiveDossierId ? 'Aucun document dans cette categorie.' : 'Aucun document trouve.'}
+              </div>
+            ) : (
+              filteredDocs.map(doc => {
+                const cat = catMap[doc.category] || catMap.autre;
+                const isActive = selectedDoc?.id === doc.id;
+                return (
+                  <div key={doc.id} onClick={() => setSelectedDoc(doc)}
+                    style={{ display: 'grid', gridTemplateColumns: '36px 1fr 90px 80px 70px', gap: 8,
+                      padding: '10px 14px', borderBottom: '1px solid var(--bd)', cursor: 'pointer',
+                      background: isActive ? 'var(--or-l)' : 'var(--bg2)',
+                      borderLeft: isActive ? '3px solid var(--or)' : '3px solid transparent',
+                      transition: 'all .1s' }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg3)'; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'var(--bg2)'; }}>
+                    <FileIcon mime={doc.mime_type} size={28} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap', color: isActive ? 'var(--or)' : 'var(--tx)' }}>
+                        {doc.original_name || doc.name}
+                      </div>
+                      {doc.uploaded_by && (
+                        <div style={{ fontSize: 10, color: 'var(--tx4)', marginTop: 1 }}>{doc.uploaded_by}</div>
+                      )}
+                    </div>
+                    <span style={{ fontSize: 10, fontWeight: 600, color: cat.color, alignSelf: 'center' }}>
+                      {cat.icon} {cat.label}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--tx4)', alignSelf: 'center' }}>
+                      {new Date(doc.created).toLocaleDateString('fr-FR')}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--tx4)', alignSelf: 'center' }}>
+                      {doc.size_human}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Stats footer */}
+          <div style={{ padding: '8px 14px', borderTop: '1.5px solid var(--bd)', background: 'var(--bg3)',
+            display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 11, color: 'var(--or)', fontWeight: 700 }}>
+              {filteredDocs.length} document{filteredDocs.length > 1 ? 's' : ''}
+            </span>
+            {category === 'all' && DOC_CATEGORIES.map(c => {
+              const cnt = (grouped[c.key] || []).length;
+              if (!cnt) return null;
+              return (
+                <span key={c.key} style={{ fontSize: 10, color: 'var(--tx3)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                  {c.icon} {c.label}: <strong style={{ color: 'var(--tx2)' }}>{cnt}</strong>
+                </span>
+              );
+            })}
+          </div>
         </div>
-      ) : (
-        // Flat list for single category
-        filteredDocs.map(doc => (
-          <DocRow key={doc.id} doc={doc}
-            onPreview={setPreviewing}
+
+        {/* ── RIGHT PANE: Preview panel ── */}
+        {selectedDoc ? (
+          <PreviewPanel doc={selectedDoc}
+            onClose={() => setSelectedDoc(null)}
             onEdit={setEditing}
             onDelete={handleDelete}
             onVersions={setVersioning}
-            onRename={() => {}} />
-        ))
-      )}
-
-      {/* Stats bar */}
-      {stats.length > 0 && (
-        <div style={{ marginTop: 16, padding: '10px 14px', background: 'var(--bg3)',
-          border: '1.5px solid var(--bd)', borderRadius: 'var(--r)', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 11, color: 'var(--or)', fontWeight: 700 }}>
-            {documents.length} document{documents.length > 1 ? 's' : ''}
-          </span>
-          {stats.map(s => (
-            <span key={s.key} style={{ fontSize: 10, color: 'var(--tx3)', display: 'flex', alignItems: 'center', gap: 3 }}>
-              {s.icon} {s.label}: <strong style={{ color: 'var(--tx2)' }}>{s.count}</strong>
-            </span>
-          ))}
-        </div>
-      )}
+            effectiveDossierId={effectiveDossierId}
+            onUploaded={handleUploaded}
+            onExtracted={handleExtracted} />
+        ) : (
+          <div style={{ width: 320, minWidth: 260, background: 'var(--bg3)', borderLeft: '1.5px solid var(--bd)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            color: 'var(--tx4)', flexShrink: 0, padding: 24 }}>
+            <div style={{ fontSize: 40, marginBottom: 12, opacity: .4 }}>📄</div>
+            <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Aucun document selectionne</div>
+            <div style={{ fontSize: 11, textAlign: 'center' }}>
+              Cliquez sur un document dans la liste pour afficher son apercu
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Modals */}
-      {previewing && <PDFPreview doc={previewing} onClose={() => setPreviewing(null)} />}
-      {editing && <PDFEditor doc={editing} onClose={() => setEditing(null)} onSaveVersion={() => { setEditing(null); reload(); showToast('Version sauvegardée'); }} />}
+      {editing && <PDFEditor doc={editing} onClose={() => setEditing(null)}
+        onSaveVersion={() => { setEditing(null); reload(); showToast('Version sauvegardee'); }} />}
       {versioning && <VersionsModal docId={versioning.id} onClose={() => setVersioning(null)} />}
 
       {/* Toast */}
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-          background: toast.type === 'error' ? '#dc2626' : '#059669',
-          color: '#fff', padding: '11px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-          boxShadow: '0 8px 24px rgba(0,0,0,.18)' }}>
+          background: toast.type === 'error' ? 'var(--re)' : 'var(--gr)',
+          color: '#fff', padding: '11px 18px', borderRadius: 'var(--r)', fontSize: 13, fontWeight: 600,
+          boxShadow: 'var(--shl)' }}>
           {toast.type === 'error' ? '✕ ' : '✓ '}{toast.msg}
         </div>
       )}

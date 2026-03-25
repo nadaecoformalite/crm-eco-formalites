@@ -585,6 +585,45 @@ function normalizeText(text) {
   return text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+/**
+ * Génère un slug GNAU collé (sans tirets, sans espaces, sans accents, minuscules).
+ * Supprime les préfixes CC / Communauté de Communes / CA / etc.
+ * Ex: "CC du Pays de l'Or" → "paysdelor"
+ *     "CC Grand Pic Saint-Loup" → "grandpicsaintloup"
+ */
+function gnauSlug(epciName) {
+  let name = epciName;
+  // Supprimer les préfixes institutionnels + articles qui suivent
+  const prefixes = [
+    /^communaut[eé]\s+de\s+communes\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^communaut[eé]\s+d['']?agglom[eé]ration\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^communaut[eé]\s+urbaine\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^m[eé]tropole\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^cc\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^ca\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+    /^cu\s+(de\s+la\s+|du\s+|des\s+|de\s+l['']?|d['']?|de\s+)?/i,
+  ];
+  for (const p of prefixes) {
+    const stripped = name.replace(p, '').trim();
+    if (stripped && stripped !== name) { name = stripped; break; }
+  }
+  // Minuscules, sans accents, tout collé (pas de tirets ni espaces)
+  return name.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Construit l'URL GNAU Operis : https://gnau{n}.operis.fr/{slug}/gnau/#/
+ * @param {string} epciName - Nom complet de la Communauté de Communes
+ * @param {number} n - Numéro du serveur (défaut: 1)
+ * @returns {string} URL finale
+ */
+function buildGnauOperisUrl(epciName, n = 1) {
+  const slug = gnauSlug(epciName);
+  return `https://gnau${n}.operis.fr/${slug}/gnau/#/`;
+}
+
 /** Extrait le nom court d'un EPCI (sans le préfixe "CC de", "CA de", etc.) */
 function epciShortNames(fullName) {
   const names = new Set();
@@ -624,6 +663,10 @@ function epciSlugVariants(fullName) {
 
   // Slug complet du nom original
   slugs.add(slugify(fullName));
+
+  // Slug collé (sans tirets) pour les plateformes Operis/GNAU
+  // Ex: "CC du Pays de l'Or" → "paysdelor"
+  slugs.add(gnauSlug(fullName));
 
   return [...slugs];
 }
@@ -907,6 +950,19 @@ async function findGnau(ville, epciInfo, codePostal) {
   }
 
   console.log(`\n   Recherche GNAU pour : ${ville} ${cp}`);
+
+  // ── Étape 0 : URL Operis construite directement depuis le nom EPCI (slug collé) ──
+  if (epciName) {
+    const operisUrl = buildGnauOperisUrl(epciName);
+    console.log(`   Test URL Operis construite : ${operisUrl}`);
+    const operisCheck = await checkUrl(operisUrl);
+    if (operisCheck) {
+      console.log(`   TROUVE (étape 0 - Operis construit) : ${operisCheck.finalUrl || operisUrl}`);
+      const foundUrls = [operisCheck.finalUrl || operisUrl];
+      if (epciCode) setCachedGnau(epciCode, epciName, foundUrls, 'operis_construit');
+      return { source: 'operis_construit', interco: epciName, urls: foundUrls };
+    }
+  }
 
   // ── Étape 1 : Google → gnau "code_postal" "ville" ──
   const q1 = `gnau ${cp ? '"' + cp + '"' : ''} "${ville}"`;
