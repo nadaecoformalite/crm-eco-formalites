@@ -318,7 +318,7 @@ function PlayableAudioMessage({ audioData, duration, isOwn }) {
 
 // ── Avatar ─────────────────────────────────────────────────────────────────────
 
-const AVATAR_COLORS = ['#E8501A', '#1A4A8A', '#1A7A4A', '#8A1A6A', '#4A1A8A', '#8A6A1A', '#1A6A8A', '#6A1A2A'];
+const AVATAR_COLORS = ['#E06050', '#E8943C', '#A0824B', '#4A5A18', '#A05828', '#E0A468', '#C07040', '#E8C840', '#8B6914', '#6B7A30'];
 function avatarColor(name) {
   let h = 0;
   for (let i = 0; i < (name || '').length; i++) h = (h * 31 + name.charCodeAt(i)) | 0;
@@ -444,78 +444,88 @@ function MessageThread({ conversation, currentUser, users, dossiers, onBack, exp
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px',
-        borderBottom: '1.5px solid var(--bd)', flexShrink: 0 }}>
-        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer',
-          padding: 4, display: 'flex', color: 'var(--tx2)', borderRadius: 6, transition: 'background 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-          <Ic.Back />
-        </button>
-        {(() => {
-          const dos = conversation.dossier_id ? (dossiers || []).find(d => String(d.id) === String(conversation.dossier_id)) : null;
-          return <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--or)', overflow: 'hidden',
-              textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{conversation.title}</div>
+      {/* Header enrichi */}
+      {(() => {
+        const dos = conversation.dossier_id ? (dossiers || []).find(d => String(d.id) === String(conversation.dossier_id)) : null;
+        const parts = (conversation.participants || [])
+          .map(p => (users || []).find(u => String(u.id) === String(p.user_id)))
+          .filter(Boolean);
+        const others = parts.filter(u => String(u.id) !== String(currentUser.id));
+        return <>
+          <div style={{ padding: '10px 12px', borderBottom: '1.5px solid var(--bd)', flexShrink: 0, background: 'var(--bg2)' }}>
+            {/* Top row: back + title + actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer',
+                padding: 4, display: 'flex', color: 'var(--tx2)', borderRadius: 6, transition: 'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Ic.Back />
+              </button>
+              {/* Avatar(s) des interlocuteurs */}
+              {others.length > 0 && (
+                <div style={{ display: 'flex', marginRight: -2 }}>
+                  {others.slice(0, 3).map((u, idx) => (
+                    <div key={u.id} style={{ marginLeft: idx > 0 ? -8 : 0, zIndex: 3 - idx }}>
+                      <Avatar name={u.name} size={28} />
+                    </div>
+                  ))}
+                  {others.length > 3 && <div style={{ marginLeft: -8, width: 28, height: 28, borderRadius: '50%',
+                    background: 'var(--bd)', color: 'var(--tx3)', display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: 10, fontWeight: 700, border: '2px solid var(--bg2)' }}>
+                    +{others.length - 3}
+                  </div>}
+                </div>
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                {/* Noms des interlocuteurs */}
+                <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--tx)', overflow: 'hidden',
+                  textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {others.length > 0 ? others.map(u => u.name).join(', ') : conversation.title}
+                </div>
+                {/* Titre de la conversation si différent */}
+                {others.length > 0 && conversation.title && (
+                  <div style={{ fontSize: 11, color: 'var(--or)', fontWeight: 600, overflow: 'hidden',
+                    textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>{conversation.title}</div>
+                )}
+              </div>
+              {setExpanded && <button onClick={() => setExpanded(e => !e)} title={expanded ? 'Réduire' : 'Agrandir'}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                  display: 'flex', color: 'var(--tx3)', borderRadius: 6, transition: 'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                {expanded ? <Ic.Shrink /> : <Ic.Expand />}
+              </button>}
+              {onClose && <button onClick={onClose} title="Fermer"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+                  display: 'flex', color: 'var(--tx3)', borderRadius: 6, transition: 'background 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                <Ic.X />
+              </button>}
+            </div>
+            {/* Bandeau dossier */}
             {dos && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2, flexWrap: 'wrap' }}>
-                {dos.dp_number && <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--bl)', background: 'var(--bl-l)',
-                  padding: '1px 6px', borderRadius: 8 }}>{dos.dp_number}</span>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7, paddingLeft: 32,
+                flexWrap: 'wrap' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                {dos.dp_number && <span style={{ fontSize: 10, fontWeight: 700, color: '#A0824B', background: '#A0824B14',
+                  padding: '1px 7px', borderRadius: 8, border: '1px solid #A0824B25' }}>{dos.dp_number}</span>}
                 {dos.client && <span style={{ fontSize: 11, color: 'var(--tx2)', fontWeight: 500 }}>{dos.client}</span>}
                 {dos.client_org && <span style={{ fontSize: 10, color: 'var(--tx4)' }}>({dos.client_org})</span>}
               </div>
             )}
             {conversation.dossier_id && !dos && (
-              <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--bl)', background: 'var(--bl-l)',
-                padding: '1px 7px', borderRadius: 10, display: 'inline-block', marginTop: 1 }}>
-                Dossier #{conversation.dossier_id}
-              </span>
-            )}
-          </div>;
-        })()}
-        {setExpanded && <button onClick={() => setExpanded(e => !e)} title={expanded ? 'Réduire' : 'Agrandir'}
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-            display: 'flex', color: 'var(--tx3)', borderRadius: 6, transition: 'background 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-          {expanded ? <Ic.Shrink /> : <Ic.Expand />}
-        </button>}
-        {onClose && <button onClick={onClose} title="Fermer"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-            display: 'flex', color: 'var(--tx3)', borderRadius: 6, transition: 'background 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
-          onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-          <Ic.X />
-        </button>}
-      </div>
-
-      {/* Participants bar */}
-      {(() => {
-        const parts = (conversation.participants || [])
-          .map(p => (users || []).find(u => String(u.id) === String(p.user_id)))
-          .filter(Boolean);
-        if (!parts.length) return null;
-        return (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '5px 14px',
-            borderBottom: '1px solid var(--bd)', background: 'var(--bg2)', flexWrap: 'wrap', flexShrink: 0 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--tx4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4-4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/>
-            </svg>
-            {parts.map(u => {
-              const isMe = String(u.id) === String(currentUser.id);
-              return (
-                <span key={u.id} style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10,
-                  background: isMe ? 'var(--or-l)' : 'var(--bg)',
-                  color: isMe ? 'var(--or)' : 'var(--tx2)',
-                  border: isMe ? '1px solid var(--or)' : '1px solid var(--bd)',
-                  whiteSpace: 'nowrap' }}>
-                  {isMe ? 'Moi' : u.name}
+              <div style={{ marginTop: 6, paddingLeft: 32 }}>
+                <span style={{ fontSize: 10, fontWeight: 600, color: '#A0824B', background: '#A0824B14',
+                  padding: '1px 7px', borderRadius: 10, display: 'inline-block', border: '1px solid #A0824B25' }}>
+                  Dossier #{conversation.dossier_id}
                 </span>
-              );
-            })}
+              </div>
+            )}
           </div>
-        );
+        </>;
       })()}
 
       {/* Messages area */}

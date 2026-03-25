@@ -11,7 +11,9 @@ const LOGO_SRC = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1B
 
 const EMPLOYEES = ["Nada","Sarah","David","Jimmy","Sonia","Harry","Farah","Fabienne","Ounza","Yael"];
 const WORK_TYPES = ["ITE","PAC","Panneaux Solaires","Systeme Solaire Combine","Menuiseries Exterieures","Abri Jardin","Pergola","Carport"];
-const WORK_COLORS = {"ITE":"#6366f1","PAC":"#E8501A","Panneaux Solaires":"#f59e0b","Systeme Solaire Combine":"#f97316","Menuiseries Exterieures":"#0891b2","Abri Jardin":"#059669","Pergola":"#7c3aed","Carport":"#be185d"};
+const WORK_COLORS = {"ITE":"#E06050","PAC":"#E8943C","Panneaux Solaires":"#E8C840","Systeme Solaire Combine":"#A0824B","Menuiseries Exterieures":"#4A5A18","Abri Jardin":"#A05828","Pergola":"#E0A468","Carport":"#C07040"};
+const AVATAR_COLORS = ["#E06050","#E8943C","#A0824B","#4A5A18","#A05828","#E0A468","#C07040","#E8C840","#8B6914","#6B7A30"];
+function avatarColor(name){if(!name)return AVATAR_COLORS[0];let h=0;for(let i=0;i<name.length;i++){h=name.charCodeAt(i)+((h<<5)-h);}return AVATAR_COLORS[Math.abs(h)%AVATAR_COLORS.length];}
 const KWC_OPTIONS = ["3.375 kwc","3.5 kwc","3.75 kwc","4 kwc","4.125 kwc","4.5 kwc","5 kwc","5.25 kwc","5.5 kwc","6 kwc","6.75 kwc","7 kwc","7.5 kwc","8 kwc","8.25 kwc","9 kwc","Personnalise"];
 const FORMALITES = ["Demande Prealable","Raccordement","Consuel","Recuperation de TVA"];
 const RACC_STATUSES = ["Complet","Incomplet","En cours d instruction","Subvention accordee","En attente de paiement","Pas eligible","Mise en service programmée","Mise en service","Réenvoi"];
@@ -1022,7 +1024,7 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
         {tab==="info"&&<div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
             {d.assignee
-              ?<span className="asgn"><span className="av-ico">{d.assignee[0]}</span>{d.assignee}</span>
+              ?<span className="asgn"><span className="av-ico" style={{background:avatarColor(d.assignee)}}>{d.assignee[0]}</span>{d.assignee}</span>
               :<span style={{fontSize:12,color:"var(--tx4)",fontStyle:"italic",padding:"4px 10px",border:"1.5px dashed var(--bd2)",borderRadius:20}}>Non attribué</span>
             }
             {d.client_org&&<span className="chip" style={{background:"var(--or-l)",color:"var(--or)",border:"1px solid rgba(232,80,26,.2)"}}>{d.client_org}</span>}
@@ -1617,7 +1619,7 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
               <td><div style={{display:"flex",flexWrap:"wrap",gap:3}}>{(d.works||[]).map((w,i)=><WChip key={i} type={w.type}/>)}</div></td>
               <td style={{maxWidth:160}}><div style={{fontSize:12,color:"var(--tx2)",fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.address}</div>{d.postal_code&&<div style={{fontSize:12,fontWeight:700,color:"var(--tx3)",marginTop:1}}>{d.postal_code}</div>}</td>
               <td><SBadge status={d.status}/>{d.installed&&<div style={{marginTop:3,fontSize:10,color:"#065f46",fontWeight:700}}>✓ Installe</div>}</td>
-              {isSA&&<td>{d.assignee?<span className="asgn"><span className="av-ico">{d.assignee[0]}</span>{d.assignee}</span>:<span style={{fontSize:11,color:"var(--tx4)",fontStyle:"italic"}}>—</span>}</td>}
+              {isSA&&<td>{d.assignee?<span className="asgn"><span className="av-ico" style={{background:avatarColor(d.assignee)}}>{d.assignee[0]}</span>{d.assignee}</span>:<span style={{fontSize:11,color:"var(--tx4)",fontStyle:"italic"}}>—</span>}</td>}
               <td>{getRacc(d)}</td><td>{getCons(d)}</td><td>{getRec(d)}</td>
               {isSA&&<td><span style={{color:d.paid?"var(--gr)":"var(--tx4)",fontSize:11,fontWeight:600}}>{d.paid?"✓ Paye":"—"}</span></td>}
               <td onClick={e=>e.stopPropagation()}><div style={{display:"flex",gap:4}}>
@@ -1636,41 +1638,307 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
 }
 
 // ── DASHBOARD ──
+const DASH_PARTNERS = ["Photo Ecologie","Globe Energy","Solaris France","Enr Habitat","Vert Avenir","Eco Prime Sud","Renov Express","BTP Solaire"];
+const DASH_DP_STATUSES = ["Accord","Refus","Incomplet","En attente de traitement","Attente récépissé"];
+const DASH_DP_COLORS = {"Accord":"#4A5A18","Refus":"#E05038","Incomplet":"#E8943C","En attente de traitement":"#A0824B","Attente récépissé":"#A05828"};
+
+function genDashData(){
+  const data=[];
+  const cities=["Paris","Lyon","Marseille","Toulouse","Bordeaux","Nantes","Strasbourg","Lille","Nice","Montpellier"];
+  const now=new Date();
+  for(let i=0;i<84;i++){
+    const partner=DASH_PARTNERS[Math.floor(Math.random()*DASH_PARTNERS.length)];
+    const dp=DASH_DP_STATUSES[Math.floor(Math.random()*DASH_DP_STATUSES.length)];
+    const daysAgo=Math.floor(Math.random()*365);
+    const created=new Date(now.getTime()-daysAgo*86400000);
+    const abfRand=Math.random();
+    const ca=Math.round((500+Math.random()*4500)*100)/100;
+    data.push({
+      id:i+1,
+      partenaire:partner,
+      client:"Client "+(i+1),
+      ville:cities[Math.floor(Math.random()*cities.length)],
+      created,
+      statut_dp:dp,
+      abf:abfRand<0.2?"Oui":abfRand<0.35?"Le cas échéant":"Non",
+      raccordement:Math.random()>0.4?"Fait":"À faire",
+      consuel:Math.random()>0.45?"Fait":"À faire",
+      recuperation_tva:Math.random()>0.5?"Fait":"À faire",
+      ca
+    });
+  }
+  return data;
+}
+
 function Dashboard({dossiers}){
-  const tot=dossiers.length;
-  const empD=EMPLOYEES.map(e=>({name:e,count:dossiers.filter(d=>d.assignee===e).length})).filter(e=>e.count>0).sort((a,b)=>b.count-a.count);
-  const maxE=Math.max(...empD.map(e=>e.count),1);
-  const installs=dossiers.filter(d=>d.installed).length;
-  const paid=dossiers.filter(d=>d.paid).reduce((s,d)=>s+(d.amount||0),0);
+  const [period,setPeriod]=useState("year");
+  const [hoveredDonut,setHoveredDonut]=useState(null);
+  const [allData]=useState(()=>genDashData());
+
+  const filtered=useMemo(()=>{
+    const now=new Date();
+    return allData.filter(d=>{
+      if(period==="week"){const w=new Date(now);w.setDate(now.getDate()-7);return d.created>=w;}
+      if(period==="month"){return d.created.getMonth()===now.getMonth()&&d.created.getFullYear()===now.getFullYear();}
+      return d.created.getFullYear()===now.getFullYear();
+    });
+  },[allData,period]);
+
+  const tot=filtered.length;
+  const totalCA=filtered.reduce((s,d)=>s+d.ca,0);
+  const accords=filtered.filter(d=>d.statut_dp==="Accord").length;
+  const tauxAccord=tot?Math.round(accords/tot*1000)/10:0;
+
+  // Dossiers par partenaire
+  const byPartner=useMemo(()=>{
+    const map={};
+    filtered.forEach(d=>{map[d.partenaire]=(map[d.partenaire]||0)+1;});
+    return Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  },[filtered]);
+  const maxPartner=Math.max(...byPartner.map(p=>p[1]),1);
+
+  // Statuts DP
+  const dpStats=useMemo(()=>{
+    const map={};
+    DASH_DP_STATUSES.forEach(s=>{map[s]=filtered.filter(d=>d.statut_dp===s).length;});
+    return map;
+  },[filtered]);
+
+  // Performance administrative
+  const dpValidees=tot?Math.round(filtered.filter(d=>d.statut_dp==="Accord").length/tot*100):0;
+  const raccFaits=tot?Math.round(filtered.filter(d=>d.raccordement==="Fait").length/tot*100):0;
+  const consFaits=tot?Math.round(filtered.filter(d=>d.consuel==="Fait").length/tot*100):0;
+  const tvaFaits=tot?Math.round(filtered.filter(d=>d.recuperation_tva==="Fait").length/tot*100):0;
+  const perfData=[{label:"DP validées",pct:dpValidees,color:"#4A5A18",grad:"linear-gradient(0deg,#4A5A18,#6B7A30)"},{label:"Raccordements",pct:raccFaits,color:"#E8943C",grad:"linear-gradient(0deg,#E8943C,#F0B060)"},{label:"Consuels",pct:consFaits,color:"#A05828",grad:"linear-gradient(0deg,#A05828,#C07040)"},{label:"Récup. TVA",pct:tvaFaits,color:"#E05038",grad:"linear-gradient(0deg,#E05038,#E87060)"}];
+
+  // Suivi technique
+  const abfOui=filtered.filter(d=>d.abf==="Oui").length;
+  const abfCas=filtered.filter(d=>d.abf==="Le cas échéant").length;
+  const raccAFaire=filtered.filter(d=>d.raccordement==="À faire").length;
+  const consAFaire=filtered.filter(d=>d.consuel==="À faire").length;
+
+  // Donut SVG
+  const donutR=70,donutStroke=28,cx=90,cy=90;
+  const donutSlices=useMemo(()=>{
+    const entries=DASH_DP_STATUSES.map(s=>({label:s,value:dpStats[s]||0,color:DASH_DP_COLORS[s]})).filter(e=>e.value>0);
+    const total=entries.reduce((s,e)=>s+e.value,0);
+    let cum=0;
+    return entries.map(e=>{const start=cum;cum+=e.value/total;return{...e,start,end:cum};});
+  },[dpStats]);
+
+  // Derniers dossiers
+  const lastDossiers=useMemo(()=>[...filtered].sort((a,b)=>b.created-a.created).slice(0,10),[filtered]);
+
+  // Palette chaude — corail, terre, olive
+  const C1="#E06050",C1L="#FDF0EE",C2="#E8943C",C2L="#FEF4E8",C3="#4A5A18",C3L="#F0F3E6";
+
+  const periodBtns=[{k:"week",l:"Cette Semaine"},{k:"month",l:"Ce Mois"},{k:"year",l:"Cette Année"}];
+
+  // Icônes SVG sobres et uniformes
+  const DashIc=({type,size=20,color="#9b9b90"})=>{
+    const s={width:size,height:size,display:"inline-flex",alignItems:"center",justifyContent:"center"};
+    if(type==="folder") return <span style={s}><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></span>;
+    if(type==="euro") return <span style={s}><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="10" x2="14" y2="10"/><line x1="4" y1="14" x2="14" y2="14"/><path d="M17 6a6 6 0 0 0-5.66 4H4m7.34 4A6 6 0 0 0 17 18"/></svg></span>;
+    if(type==="check") return <span style={s}><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></span>;
+    if(type==="bar") return <span style={s}><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>;
+    if(type==="pie") return <span style={s}><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></span>;
+    if(type==="tool") return <span style={s}><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg></span>;
+    if(type==="list") return <span style={s}><svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></span>;
+    return null;
+  };
+
   return <div>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:11,marginBottom:18}}>
-      {[{l:"Total dossiers",v:tot,c:"var(--or)"},{l:"Installes",v:installs,c:"var(--gr)"},{l:"Impayes",v:dossiers.filter(d=>!d.paid).length,c:"var(--re)"},{l:"CA encaisse",v:paid.toLocaleString("fr-FR")+" €",c:"var(--bl)"}].map((s,i)=><div key={i} className="scard" style={{"--sc":s.c}}><div style={{fontSize:typeof s.v==="string"?16:28,fontWeight:800,lineHeight:1,marginBottom:3,letterSpacing:"-.04em",color:s.c}}>{s.v}</div><div style={{fontSize:11,color:"var(--tx3)"}}>{s.l}</div></div>)}
+    {/* Filtres temporels */}
+    <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
+      {periodBtns.map(p=><button key={p.k} className={"btn "+(period===p.k?"btn-p":"btn-s")} style={{fontSize:12,padding:"7px 16px",borderRadius:20}} onClick={()=>setPeriod(p.k)}>{p.l}</button>)}
     </div>
-    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-      <div className="card"><h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>Statuts</h3>
-        {ALL_STATUSES.filter(s=>dossiers.some(d=>d.status===s.key)).map(s=>{const c=dossiers.filter(d=>d.status===s.key).length;return<div key={s.key} style={{display:"flex",alignItems:"center",gap:7,marginBottom:7}}>
-          <span className="sdot" style={{width:7,height:7,borderRadius:"50%",background:s.color,flexShrink:0}}/>
-          <span style={{fontSize:11,flex:1}}>{s.label}</span>
-          <div style={{flex:2,background:"var(--bd)",borderRadius:3,height:5,overflow:"hidden"}}><div style={{width:(tot?c/tot*100:0)+"%",height:"100%",background:s.color,borderRadius:3}}/></div>
-          <span style={{fontSize:10,color:"var(--tx4)",width:16,textAlign:"right",fontWeight:700}}>{c}</span>
-        </div>;})}
+
+    {/* KPIs */}
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14,marginBottom:22}}>
+      {[
+        {l:"Total Dossiers",v:tot,ic:"folder",c:C1,bg:C1L},
+        {l:"Chiffre d'Affaires",v:totalCA.toLocaleString("fr-FR",{maximumFractionDigits:0})+" €",ic:"euro",c:C2,bg:C2L},
+        {l:"Taux d'Accord",v:tauxAccord+"%",ic:"check",c:C3,bg:C3L}
+      ].map((s,i)=><div key={i} className="scard" style={{"--sc":s.c,background:`linear-gradient(135deg,${s.bg},var(--bg2))`,borderColor:s.c+"25"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <div>
+            <div style={{fontSize:10,color:"var(--tx4)",fontWeight:600,textTransform:"uppercase",letterSpacing:".07em",marginBottom:7}}>{s.l}</div>
+            <div style={{fontSize:typeof s.v==="string"?21:30,fontWeight:800,lineHeight:1,letterSpacing:"-.03em",color:s.c}}>{s.v}</div>
+          </div>
+          <div style={{width:38,height:38,borderRadius:10,background:s.c+"12",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <DashIc type={s.ic} size={19} color={s.c}/>
+          </div>
+        </div>
+      </div>)}
+    </div>
+
+    {/* Graphiques principaux — row 1 */}
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:14}}>
+      {/* Dossiers par Partenaire */}
+      <div className="card" style={{padding:20}}>
+        <h3 style={{fontSize:12,fontWeight:800,marginBottom:16,display:"flex",alignItems:"center",gap:8,color:"var(--tx2)"}}>
+          <DashIc type="bar" size={15} color="var(--tx4)"/>Dossiers par Partenaire
+        </h3>
+        <div style={{display:"flex",flexDirection:"column",gap:9}}>
+          {byPartner.map(([name,count],i)=>{
+            const barPalette=["#E06050","#E8943C","#E8C840","#A0824B","#4A5A18","#A05828","#E0A468","#C07040"];
+            const col=barPalette[i%barPalette.length];
+            return <div key={name} style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:11,fontWeight:600,width:100,flexShrink:0,color:"var(--tx3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span>
+              <div style={{flex:1,background:"var(--bd)",borderRadius:20,height:20,overflow:"hidden"}}>
+                <div style={{width:(count/maxPartner*100)+"%",height:"100%",background:`linear-gradient(90deg,${col},${col}bb)`,borderRadius:20,transition:"width .6s ease",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8,minWidth:28}}>
+                  <span style={{fontSize:9,fontWeight:700,color:"#fff"}}>{count}</span>
+                </div>
+              </div>
+            </div>;
+          })}
+        </div>
       </div>
-      <div className="card"><h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>Equipe</h3>
-        {empD.slice(0,8).map(e=><div key={e.name} style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-          <span style={{fontSize:10,fontWeight:700,width:62,flexShrink:0}}>{e.name}</span>
-          <div style={{flex:1,background:"var(--bd)",borderRadius:3,height:5,overflow:"hidden"}}><div style={{width:(e.count/maxE*100)+"%",height:"100%",background:"var(--or)",borderRadius:3}}/></div>
-          <span style={{fontSize:10,color:"var(--tx4)",width:14,textAlign:"right",fontWeight:700}}>{e.count}</span>
-        </div>)}
-        {!empD.length&&<p style={{color:"var(--tx4)",fontSize:12}}>Aucun dossier</p>}
+
+      {/* Donut — Statuts DP */}
+      <div className="card" style={{padding:20}}>
+        <h3 style={{fontSize:12,fontWeight:800,marginBottom:16,display:"flex",alignItems:"center",gap:8,color:"var(--tx2)"}}>
+          <DashIc type="pie" size={15} color="var(--tx4)"/>Statuts des DP
+        </h3>
+        <div style={{display:"flex",alignItems:"center",gap:20}}>
+          <svg width="180" height="180" viewBox="0 0 180 180">
+            {donutSlices.map((sl,i)=>{
+              const circ=2*Math.PI*donutR;
+              const dashLen=circ*(sl.end-sl.start);
+              const dashOff=circ*(1-sl.start)+circ*0.25;
+              const isHovered=hoveredDonut===i;
+              return <circle key={i} cx={cx} cy={cy} r={donutR} fill="none"
+                stroke={sl.color} strokeWidth={isHovered?donutStroke+4:donutStroke}
+                strokeDasharray={`${dashLen} ${circ-dashLen}`}
+                strokeDashoffset={dashOff}
+                strokeLinecap="butt"
+                style={{transition:"all .25s",cursor:"pointer",opacity:hoveredDonut!==null&&!isHovered?.4:1,filter:isHovered?"brightness(1.08)":"none"}}
+                onMouseEnter={()=>setHoveredDonut(i)} onMouseLeave={()=>setHoveredDonut(null)}
+              />;
+            })}
+            <text x={cx} y={cy-5} textAnchor="middle" style={{fontSize:20,fontWeight:800,fill:"var(--tx)"}}>{tot}</text>
+            <text x={cx} y={cy+11} textAnchor="middle" style={{fontSize:9,fill:"var(--tx4)",letterSpacing:".05em"}}>DOSSIERS</text>
+          </svg>
+          <div style={{display:"flex",flexDirection:"column",gap:6,flex:1}}>
+            {donutSlices.map((sl,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 8px",borderRadius:8,background:hoveredDonut===i?sl.color+"10":"transparent",transition:"all .2s",cursor:"pointer"}} onMouseEnter={()=>setHoveredDonut(i)} onMouseLeave={()=>setHoveredDonut(null)}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:sl.color,flexShrink:0,opacity:.85}}/>
+              <span style={{fontSize:11,flex:1,fontWeight:500,color:"var(--tx3)"}}>{sl.label}</span>
+              <span style={{fontSize:11,fontWeight:700,color:"var(--tx2)"}}>{sl.value}</span>
+              <span style={{fontSize:9,color:"var(--tx4)",fontWeight:500}}>({tot?Math.round(sl.value/tot*100):0}%)</span>
+            </div>)}
+          </div>
+        </div>
       </div>
     </div>
-    <div className="card">
-      <h3 style={{fontSize:12,fontWeight:800,marginBottom:12}}>Travaux</h3>
-      <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
-        {WORK_TYPES.map(wt=>{const c=dossiers.filter(d=>(d.works||[]).some(w=>w.type===wt)).length;const col=WORK_COLORS[wt];return<div key={wt} style={{flex:"1",minWidth:80,padding:"9px 12px",borderRadius:"var(--r)",background:col+"18",border:"1.5px solid "+col+"30"}}>
-          <div style={{fontSize:8,color:col,marginBottom:2,fontWeight:800,textTransform:"uppercase"}}>{wt}</div>
-          <div style={{fontSize:18,fontWeight:800,color:col}}>{c}</div>
-        </div>;})}
+
+    {/* Graphiques principaux — row 2 */}
+    <div style={{display:"grid",gridTemplateColumns:"1.2fr .8fr",gap:14,marginBottom:14}}>
+      {/* Performance Administrative */}
+      <div className="card" style={{padding:20}}>
+        <h3 style={{fontSize:12,fontWeight:800,marginBottom:20,display:"flex",alignItems:"center",gap:8,color:"var(--tx2)"}}>
+          <DashIc type="bar" size={15} color="var(--tx4)"/>Performance Administrative
+        </h3>
+        <div style={{display:"flex",alignItems:"flex-end",justifyContent:"space-around",height:180,gap:16,paddingBottom:4}}>
+          {perfData.map((p,i)=><div key={i} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,height:"100%",justifyContent:"flex-end"}}>
+            <span style={{fontSize:12,fontWeight:700,color:"var(--tx2)",marginBottom:6}}>{p.pct}%</span>
+            <div style={{width:"100%",maxWidth:48,background:"var(--bd)",borderRadius:10,height:"70%",overflow:"hidden",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+              <div style={{width:"100%",height:p.pct+"%",background:p.grad,borderRadius:10,transition:"height .8s ease",minHeight:4}}/>
+            </div>
+            <span style={{fontSize:9,fontWeight:600,color:"var(--tx4)",marginTop:8,textAlign:"center",lineHeight:1.2}}>{p.label}</span>
+          </div>)}
+        </div>
+      </div>
+
+      {/* Suivi Technique */}
+      <div className="card" style={{padding:20}}>
+        <h3 style={{fontSize:12,fontWeight:800,marginBottom:16,display:"flex",alignItems:"center",gap:8,color:"var(--tx2)"}}>
+          <DashIc type="tool" size={15} color="var(--tx4)"/>Suivi Technique
+        </h3>
+        <div style={{display:"flex",flexDirection:"column",gap:16}}>
+          {/* ABF */}
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{fontSize:11,fontWeight:600,color:"var(--tx3)"}}>Bâtiments de France (ABF)</span>
+              <span style={{fontSize:10,fontWeight:600,color:"var(--tx4)"}}>{abfOui+abfCas}/{tot}</span>
+            </div>
+            <div style={{background:"var(--bd)",borderRadius:20,height:10,overflow:"hidden",display:"flex"}}>
+              <div style={{width:tot?(abfOui/tot*100)+"%":"0%",height:"100%",background:"linear-gradient(90deg,#A0824B,#C0A060)",transition:"width .6s"}} title={"Oui: "+abfOui}/>
+              <div style={{width:tot?(abfCas/tot*100)+"%":"0%",height:"100%",background:"linear-gradient(90deg,#E8C840,#F0D868)",transition:"width .6s"}} title={"Le cas échéant: "+abfCas}/>
+            </div>
+            <div style={{display:"flex",gap:12,marginTop:5}}>
+              <span style={{fontSize:9,color:"var(--tx4)",display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:"#A0824B"}}/>Oui ({abfOui})</span>
+              <span style={{fontSize:9,color:"var(--tx4)",display:"flex",alignItems:"center",gap:4}}><span style={{width:6,height:6,borderRadius:"50%",background:"#E8C840"}}/>Le cas échéant ({abfCas})</span>
+            </div>
+          </div>
+          {/* Raccordements */}
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{fontSize:11,fontWeight:600,color:"var(--tx3)"}}>Raccordements</span>
+              <span style={{fontSize:10,fontWeight:600,color:"var(--tx4)"}}>{tot-raccAFaire}/{tot} faits</span>
+            </div>
+            <div style={{background:"var(--bd)",borderRadius:20,height:10,overflow:"hidden"}}>
+              <div style={{width:tot?((tot-raccAFaire)/tot*100)+"%":"0%",height:"100%",background:"linear-gradient(90deg,#E8943C,#F0B060)",borderRadius:20,transition:"width .6s"}}/>
+            </div>
+            <div style={{fontSize:9,color:"var(--tx4)",marginTop:4}}>Reste : <span style={{fontWeight:700,color:"#E05038"}}>{raccAFaire}</span></div>
+          </div>
+          {/* Consuels */}
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+              <span style={{fontSize:11,fontWeight:600,color:"var(--tx3)"}}>Consuels</span>
+              <span style={{fontSize:10,fontWeight:600,color:"var(--tx4)"}}>{tot-consAFaire}/{tot} faits</span>
+            </div>
+            <div style={{background:"var(--bd)",borderRadius:20,height:10,overflow:"hidden"}}>
+              <div style={{width:tot?((tot-consAFaire)/tot*100)+"%":"0%",height:"100%",background:"linear-gradient(90deg,#A05828,#C07040)",borderRadius:20,transition:"width .6s"}}/>
+            </div>
+            <div style={{fontSize:9,color:"var(--tx4)",marginTop:4}}>Reste : <span style={{fontWeight:700,color:"#E05038"}}>{consAFaire}</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Tableau détaillé — Leaderboard */}
+    <div className="card" style={{padding:0,overflow:"hidden"}}>
+      <div style={{padding:"14px 20px 11px",borderBottom:"1.5px solid var(--bd)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <h3 style={{fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:8,color:"var(--tx2)"}}>
+          <DashIc type="list" size={15} color="var(--tx4)"/>Derniers Dossiers Insérés
+        </h3>
+        <span style={{fontSize:10,color:"var(--tx4)",fontWeight:500}}>{lastDossiers.length} derniers</span>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table>
+          <thead>
+            <tr>
+              <th style={{paddingLeft:20}}>#</th>
+              <th>Partenaire</th>
+              <th>Client</th>
+              <th>Date</th>
+              <th>CA Généré</th>
+              <th>Statut DP</th>
+              <th style={{textAlign:"center"}}>ABF</th>
+              <th style={{textAlign:"center"}}>Racc.</th>
+              <th style={{textAlign:"center"}}>Consuel</th>
+              <th style={{textAlign:"center"}}>TVA</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lastDossiers.map((d,i)=>{
+              const dpCol=DASH_DP_COLORS[d.statut_dp]||"var(--tx3)";
+              const pill=(done)=>{const ok=done==="Fait";return <span style={{display:"inline-flex",width:22,height:22,borderRadius:"50%",alignItems:"center",justifyContent:"center",background:ok?"#F0F3E6":"#FDF0EE",border:"1.5px solid "+(ok?"#c5d4a0":"#f0c8b8")}}><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke={ok?"#4A5A18":"#E05038"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">{ok?<polyline points="20 6 9 17 4 12"/>:<><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>}</svg></span>;};
+              return <tr key={d.id} style={{transition:"background .15s"}}>
+                <td style={{paddingLeft:20,fontWeight:600,color:"var(--tx4)",fontSize:11}}>{i+1}</td>
+                <td><span style={{fontWeight:600,fontSize:12,color:"var(--tx)"}}>{d.partenaire}</span></td>
+                <td style={{fontSize:12,color:"var(--tx3)"}}>{d.client}</td>
+                <td style={{fontSize:11,color:"var(--tx4)",fontFamily:"var(--fm)"}}>{d.created.toLocaleDateString("fr-FR")}</td>
+                <td style={{fontWeight:600,fontSize:12,color:C2,fontFamily:"var(--fm)"}}>{d.ca.toLocaleString("fr-FR",{maximumFractionDigits:0})} €</td>
+                <td><span className="sbdg" style={{background:dpCol+"12",color:dpCol,fontWeight:600}}><span className="sdot" style={{background:dpCol,opacity:.7}}/>{d.statut_dp}</span></td>
+                <td style={{textAlign:"center"}}>{d.abf==="Non"?<span style={{color:"var(--tx4)",fontSize:10}}>—</span>:<span style={{fontSize:10,fontWeight:600,color:"#A0824B"}}>{d.abf}</span>}</td>
+                <td style={{textAlign:"center"}}>{pill(d.raccordement)}</td>
+                <td style={{textAlign:"center"}}>{pill(d.consuel)}</td>
+                <td style={{textAlign:"center"}}>{pill(d.recuperation_tva)}</td>
+              </tr>;
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   </div>;
@@ -1750,7 +2018,7 @@ function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
       {!filtered.length&&<p style={{color:"var(--tx4)",fontSize:12}}>Aucun partenaire</p>}
       {filtered.map(c=>{const doss=dossiers.filter(d=>d.client_org===c.name);return<div className="card" key={c.id}>
         <div style={{display:"flex",gap:10,marginBottom:10}}>
-          <div className="av" style={{width:42,height:42,fontSize:14,borderRadius:11,flexShrink:0}}>{c.name[0]}</div>
+          <div className="av" style={{width:42,height:42,fontSize:14,borderRadius:11,flexShrink:0,background:avatarColor(c.name)}}>{c.name[0]}</div>
           <div style={{flex:1}}><div style={{fontWeight:700,fontSize:13}}>{c.name}</div><div style={{fontSize:10,color:"var(--tx3)",marginTop:1}}>{c.email}</div></div>
           <span style={{background:"var(--or-l)",color:"var(--or)",padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,border:"1px solid rgba(232,80,26,.2)",flexShrink:0}}>{doss.length} dossier{doss.length!==1?"s":""}</span>
         </div>
@@ -1968,7 +2236,7 @@ function Profil({currentUser,users,setUsers,toast}){
     <div className="card" style={{marginBottom:12}}>
       <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18}}>
         <div style={{position:"relative"}}>
-          <div className="av" style={{width:68,height:68,fontSize:22}}>{u.avatar?<img src={u.avatar} alt="av"/>:u.initials}</div>
+          <div className="av" style={{width:68,height:68,fontSize:22,background:u.avatar?"var(--or)":avatarColor(u.name)}}>{u.avatar?<img src={u.avatar} alt="av"/>:u.initials}</div>
           <button style={{position:"absolute",bottom:-3,right:-3,width:24,height:24,borderRadius:"50%",background:"var(--or)",border:"2px solid var(--bg2)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}} onClick={()=>avRef.current&&avRef.current.click()}><Ic n="cam" s={11} c="#fff"/></button>
           <input ref={avRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleAv(e.target.files?.[0])}/>
         </div>
@@ -2062,7 +2330,7 @@ function Admin({users,setUsers,toast}){
       </div>}
 
       {users.map(u=><div key={u.id} style={{display:"flex",alignItems:"center",gap:11,marginBottom:8,padding:"10px 12px",background:"var(--bg3)",borderRadius:"var(--r)",border:"1.5px solid var(--bd)"}}>
-        <div className="av">{u.avatar?<img src={u.avatar} alt=""/>:u.initials}</div>
+        <div className="av" style={{background:u.avatar?"var(--or)":avatarColor(u.name)}}>{u.avatar?<img src={u.avatar} alt=""/>:u.initials}</div>
         <div style={{flex:1}}><div style={{fontWeight:600,fontSize:13}}>{u.name}</div><div style={{fontSize:10,color:"var(--tx4)"}}>{u.email}</div></div>
         <span style={{padding:"2px 9px",borderRadius:20,fontSize:10,fontWeight:700,background:rc(u.role).bg,color:rc(u.role).color,border:"1px solid "+rc(u.role).border}}>{u.role}</span>
         {delConfirm===u.id?<div style={{display:"flex",gap:4}}>
@@ -2244,7 +2512,7 @@ export default function App(){
           </div>)}
         </div>
         <div className="sb-usr">
-          <div className="av" style={{fontSize:10}}>{curUser.avatar?<img src={curUser.avatar} alt=""/>:curUser.initials}</div>
+          <div className="av" style={{fontSize:10,background:curUser.avatar?"var(--or)":avatarColor(curUser.name)}}>{curUser.avatar?<img src={curUser.avatar} alt=""/>:curUser.initials}</div>
           <div style={{flex:1,minWidth:0}}><div className="unm" style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{curUser.name}</div><div className="uro">{curUser.role}</div></div>
           <button style={{background:"none",border:"none",cursor:"pointer",padding:5,color:"rgba(255,255,255,.4)",display:"flex",borderRadius:5,transition:".15s"}} onClick={()=>{apiLogout();setUser(null);}}><Ic n="logout" s={14} c="rgba(255,255,255,.5)"/></button>
         </div>
@@ -2302,7 +2570,7 @@ export default function App(){
             {showNotifs&&<NotifPanel notifs={notifs} onClose={()=>setShowNotifs(false)} onClear={()=>{setNotifs(p=>p.map(n=>({...n,unread:false})));setShowNotifs(false);}}/>}
           </div>
 
-          <div className="av" style={{width:30,height:30,fontSize:10,cursor:"pointer"}} onClick={()=>setPage("profil")}>
+          <div className="av" style={{width:30,height:30,fontSize:10,cursor:"pointer",background:curUser.avatar?"var(--or)":avatarColor(curUser.name)}} onClick={()=>setPage("profil")}>
             {curUser.avatar?<img src={curUser.avatar} alt=""/>:curUser.initials}
           </div>
         </div>
