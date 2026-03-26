@@ -24,6 +24,7 @@ export const DOC_CATEGORIES = [
   { key: 'devis',         label: 'Devis',              icon: '📋', color: '#E8501A', bg: '#FEF0EB' },
   { key: 'facture',       label: 'Facture',            icon: '🧾', color: '#d97706', bg: '#fffbeb' },
   { key: 'tva',           label: 'Récupération TVA',   icon: '💶', color: '#0891b2', bg: '#ecfeff' },
+  { key: 'attestation',   label: 'Attestation',         icon: '🔏', color: '#1A7A4A', bg: '#EDFAF3' },
   { key: 'contrat',       label: 'Contrat',            icon: '📄', color: '#374151', bg: '#f9fafb' },
   { key: 'plan',          label: 'Plan / Schéma',      icon: '📐', color: '#be185d', bg: '#fdf2f8' },
   { key: 'photo',         label: 'Photo',              icon: '📷', color: '#92400e', bg: '#fef3c7' },

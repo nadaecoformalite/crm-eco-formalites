@@ -59,10 +59,73 @@ const TOOLS = [
   { id: 'text',      label: 'Texte',     icon: 'T' },
   { id: 'highlight', label: 'Surligneur',icon: '▬' },
   { id: 'signature', label: 'Signature', icon: '🖊' },
+  { id: 'stamp',     label: 'Cachet',    icon: '🔏' },
   { id: 'eraser',    label: 'Gomme',     icon: '⌫' },
   { id: 'group',     label: 'Grouper',   icon: '⊞' },
   { id: 'ungroup',   label: 'Dégrouper', icon: '⊟' },
 ];
+
+// ── Cachet / Tampon Eco-Formalités ────────────────────────────────────────────
+// Génère l'image du cachet officiel via Canvas (signature + infos société)
+function generateStampDataURL() {
+  const w = 420, h = 220;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+
+  // Fond transparent
+  ctx.clearRect(0, 0, w, h);
+
+  // Signature manuscrite stylisée (tracé SVG-like)
+  ctx.save();
+  ctx.strokeStyle = '#1a1a1a';
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  // Paraphe stylisé
+  ctx.moveTo(80, 50);
+  ctx.bezierCurveTo(90, 20, 140, 15, 160, 40);
+  ctx.bezierCurveTo(180, 65, 130, 80, 110, 70);
+  ctx.bezierCurveTo(90, 60, 105, 35, 135, 30);
+  ctx.bezierCurveTo(165, 25, 200, 45, 210, 60);
+  ctx.bezierCurveTo(220, 75, 195, 85, 180, 75);
+  ctx.stroke();
+  // Boucle du paraphe
+  ctx.beginPath();
+  ctx.moveTo(180, 75);
+  ctx.bezierCurveTo(200, 65, 230, 55, 260, 50);
+  ctx.bezierCurveTo(290, 45, 310, 55, 295, 70);
+  ctx.bezierCurveTo(280, 85, 250, 75, 240, 65);
+  ctx.stroke();
+  // Trait final
+  ctx.beginPath();
+  ctx.moveTo(240, 65);
+  ctx.bezierCurveTo(260, 80, 300, 85, 330, 70);
+  ctx.stroke();
+  ctx.restore();
+
+  // Texte du cachet
+  ctx.fillStyle = '#1a1a6a';
+  ctx.font = 'bold 16px "DM Sans", Helvetica, Arial, sans-serif';
+  ctx.fillText('ECO-FORMALITES', 60, 115);
+
+  ctx.fillStyle = '#333';
+  ctx.font = '11px "DM Sans", Helvetica, Arial, sans-serif';
+  ctx.fillText('196 avenue Jean Lolive - 93500 PANTIN', 60, 135);
+  ctx.fillText('Tel : 09.81.57.06.37 - 06.98.90.26.52', 60, 152);
+  ctx.fillText('yossi@eco-formalites.com', 60, 169);
+  ctx.fillText('RCS Bobigny : 921 468 641', 60, 186);
+
+  return c.toDataURL('image/png');
+}
+
+// Cache le data URL du cachet
+let _stampCache = null;
+export function getStampDataURL() {
+  if (!_stampCache) _stampCache = generateStampDataURL();
+  return _stampCache;
+}
 
 // ── Main PDFEditor component ───────────────────────────────────────────────────
 
@@ -896,6 +959,20 @@ export default function PDFEditor({ doc, onClose, onSaveVersion }) {
               style={styles.toolBtn(tool === t.id)}
               onClick={() => {
                 if (t.id === 'signature') { setShowSigModal(true); return; }
+                if (t.id === 'stamp') {
+                  const canvas = fabricRef.current;
+                  const fabric = fabricLibRef.current;
+                  if (!canvas || !fabric) return;
+                  const stampUrl = getStampDataURL();
+                  fabric.Image.fromURL(stampUrl, (img) => {
+                    img.set({ left: 50, top: 50, scaleX: 0.5, scaleY: 0.5 });
+                    canvas.add(img);
+                    canvas.setActiveObject(img);
+                    canvas.renderAll();
+                    scheduleAutosave();
+                  });
+                  return;
+                }
                 if (t.id === 'group') { handleGroup(); return; }
                 if (t.id === 'ungroup') { handleUngroup(); return; }
                 setTool(t.id);

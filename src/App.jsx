@@ -1,8 +1,10 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import Tesseract from "tesseract.js";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import EmailModule from "./EmailModule.jsx";
 import GEDModule, { DOC_CATEGORIES } from "./GEDModule.jsx";
+import { getStampDataURL } from "./PDFEditor.jsx";
 import ChatBubble, { openChatForDossier } from "./ChatModule.jsx";
 import { lookupUrbanisme, updateUserSmtp, login as apiLogin, logout as apiLogout, getToken, uploadDocuments } from "./api.js";
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -277,6 +279,318 @@ async function extractKbis(file){
   }catch{return null;}
 }
 
+// ── Generation CERFA Demande Prealable (R11646 / 13703) ──
+// Telecharge le formulaire officiel depuis service-public.fr et remplit les champs AcroForm
+const CERFA_URL="https://www.formulaires.service-public.fr/gf/cerfa_13703.do";
+const CERFA_FALLBACK="https://www.formulaires.service-public.fr/gf/getNotice.do?cerfaNotice=51434&cerfaFormulaire=13703*09";
+
+// Mapping type travaux → description CERFA
+const WORK_DESCRIPTIONS={
+  "ITE":"Isolation thermique par l'exterieur (ITE) des facades",
+  "PAC":"Installation d'une pompe a chaleur (PAC) - unite exterieure",
+  "Panneaux Solaires":"Installation de panneaux photovoltaiques en toiture",
+  "Systeme Solaire Combine":"Installation d'un systeme solaire combine (SSC) en toiture",
+  "Menuiseries Exterieures":"Remplacement des menuiseries exterieures (fenetres, portes)",
+  "Abri Jardin":"Construction d'un abri de jardin",
+  "Pergola":"Construction d'une pergola",
+  "Carport":"Construction d'un carport",
+};
+
+async function fetchCerfaPDF(){
+  // Tente de telecharger le CERFA officiel
+  const urls=[CERFA_URL,CERFA_FALLBACK];
+  for(const url of urls){
+    try{
+      const res=await fetch(url,{mode:"cors"});
+      if(res.ok){
+        const ct=res.headers.get("content-type")||"";
+        if(ct.includes("pdf")){
+          return new Uint8Array(await res.arrayBuffer());
+        }
+      }
+    }catch{}
+  }
+  // Si CORS bloque (probable), passer par un proxy ou generer from scratch
+  // Tentative via le proxy API du serveur
+  try{
+    const API_URL=import.meta.env.VITE_API_URL||'/api';
+    const token=localStorage.getItem('auth_token');
+    const res=await fetch(API_URL+'/proxy-pdf?url='+encodeURIComponent(CERFA_URL),{
+      headers:token?{Authorization:'Bearer '+token}:{}
+    });
+    if(res.ok){
+      const ct=res.headers.get("content-type")||"";
+      if(ct.includes("pdf"))return new Uint8Array(await res.arrayBuffer());
+    }
+  }catch{}
+  return null;
+}
+
+async function generateCerfaPDF(dossier){
+  const d=dossier;
+  const worksDesc=(d.works||[]).map(w=>WORK_DESCRIPTIONS[w.type]||w.type).join(" ; ");
+  const kwcInfo=(d.works||[]).map(w=>w.kwc).filter(Boolean).join(", ");
+  const fullDesc=worksDesc+(kwcInfo?" - Puissance : "+kwcInfo:"");
+
+  // Tenter de charger le CERFA officiel avec champs AcroForm
+  let pdfBytes=await fetchCerfaPDF();
+  if(pdfBytes){
+    try{
+      const pdf=await PDFDocument.load(pdfBytes);
+      const form=pdf.getForm();
+      const fields=form.getFields();
+
+      // Mapping des champs connus du CERFA 13703
+      const fieldMap={
+        // Identite du demandeur
+        "nom":d.client_nom||"",
+        "prenom":d.client_prenom||"",
+        "Nom":d.client_nom||"",
+        "Prénom":d.client_prenom||"",
+        "topmenu_01[0].Sous-menu_01[0].Nom[0]":d.client_nom||"",
+        "topmenu_01[0].Sous-menu_01[0].Prénom[0]":d.client_prenom||"",
+        // Coordonnees
+        "topmenu_01[0].Sous-menu_01[0].Adresse[0]":d.address||"",
+        "topmenu_01[0].Sous-menu_01[0].Code postal[0]":d.postal_code||"",
+        "topmenu_01[0].Sous-menu_01[0].Localite[0]":d.ville||"",
+        "topmenu_01[0].Sous-menu_01[0].Téléphone[0]":d.phone||"",
+        "topmenu_01[0].Sous-menu_01[0].Courriel[0]":d.email||"",
+        "adresse":d.address||"",
+        "code_postal":d.postal_code||"",
+        "commune":d.ville||"",
+        "localite":d.ville||"",
+        "telephone":d.phone||"",
+        "courriel":d.email||"",
+        "email":d.email||"",
+        // Terrain
+        "topmenu_01[0].Sous-menu_02[0].Adresse du terrain[0]":d.address||"",
+        "topmenu_01[0].Sous-menu_02[0].Code postal[0]":d.postal_code||"",
+        "topmenu_01[0].Sous-menu_02[0].Localite[0]":d.ville||"",
+        "topmenu_01[0].Sous-menu_02[0].Références cadastrales[0]":d.parcelle||"",
+        "references_cadastrales":d.parcelle||"",
+        "section":d.parcelle||"",
+        "parcelle":d.parcelle||"",
+        // Description
+        "courte_description":fullDesc,
+        "description_travaux":fullDesc,
+        "description":fullDesc,
+        // Mandataire
+        "mandataire_nom":"Eco Formalites",
+        "mandataire_adresse":"196 avenue Jean Lolive 93500 Pantin",
+      };
+
+      // Remplir chaque champ trouve
+      for(const f of fields){
+        const name=f.getName();
+        // Chercher une correspondance directe ou partielle
+        let val=fieldMap[name];
+        if(!val){
+          const nameLow=name.toLowerCase();
+          // Matching partiel
+          if(nameLow.includes("nom")&&!nameLow.includes("pre"))val=d.client_nom||"";
+          else if(nameLow.includes("prénom")||nameLow.includes("prenom"))val=d.client_prenom||"";
+          else if(nameLow.includes("adresse")&&nameLow.includes("terrain"))val=d.address||"";
+          else if(nameLow.includes("adresse")&&!nameLow.includes("terrain"))val=d.address||"";
+          else if(nameLow.includes("code")&&nameLow.includes("postal"))val=d.postal_code||"";
+          else if(nameLow.includes("localit")||nameLow.includes("commune")||nameLow.includes("ville"))val=d.ville||"";
+          else if(nameLow.includes("tel")||nameLow.includes("phone"))val=d.phone||"";
+          else if(nameLow.includes("courriel")||nameLow.includes("mail")||nameLow.includes("email"))val=d.email||"";
+          else if(nameLow.includes("cadastr")||nameLow.includes("parcelle")||nameLow.includes("section"))val=d.parcelle||"";
+          else if(nameLow.includes("description")||nameLow.includes("travaux")||nameLow.includes("nature"))val=fullDesc;
+        }
+        if(val){
+          try{
+            const tf=form.getTextField(name);
+            tf.setText(val);
+          }catch{}
+        }
+      }
+
+      form.flatten();
+      return{bytes:await pdf.save(),isOfficial:true};
+    }catch(e){
+      console.warn("CERFA AcroForm fill failed, fallback to generated:",e);
+    }
+  }
+
+  // ── Fallback : generer le CERFA from scratch avec pdf-lib ──
+  const pdf=await PDFDocument.create();
+  const font=await pdf.embedFont(StandardFonts.Helvetica);
+  const fontB=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const black=rgb(0,0,0);
+  const gray=rgb(0.3,0.3,0.3);
+  const orColor=rgb(0.91,0.31,0.1);
+  const W=595.28,H=841.89;
+
+  // Page 1 : Informations demandeur + terrain
+  const p1=pdf.addPage([W,H]);
+  let y=H-50;
+  const hdr=(txt,pg)=>{pg.drawRectangle({x:30,y:y-2,width:W-60,height:22,color:rgb(0.95,0.95,0.92)});pg.drawText(txt,{x:38,y:y+3,font:fontB,size:11,color:orColor});y-=30;};
+  const row=(label,val,pg,indent=40)=>{pg.drawText(label,{x:indent,y,font:fontB,size:9,color:gray});pg.drawText(val||"",{x:indent+160,y,font,size:10,color:black});y-=18;};
+  const line=(pg)=>{pg.drawLine({start:{x:30,y},end:{x:W-30,y},thickness:0.5,color:rgb(0.85,0.85,0.82)});y-=8;};
+
+  // Titre
+  p1.drawText("DECLARATION PREALABLE",{x:(W-fontB.widthOfTextAtSize("DECLARATION PREALABLE",18))/2,y,font:fontB,size:18,color:orColor});
+  y-=14;
+  p1.drawText("(Article R.431-35 du code de l'urbanisme)",{x:(W-font.widthOfTextAtSize("(Article R.431-35 du code de l'urbanisme)",9))/2,y,font,size:9,color:gray});
+  y-=10;
+  p1.drawText("Formulaire CERFA n\u00b0 13703 — R11646",{x:(W-font.widthOfTextAtSize("Formulaire CERFA n\u00b0 13703 — R11646",9))/2,y,font,size:9,color:gray});
+  y-=30;
+
+  // 1. Identité
+  hdr("1. IDENTITE DU DEMANDEUR",p1);
+  row("Nom :",d.client_nom||"",p1);
+  row("Prenom :",d.client_prenom||"",p1);
+  row("Organisme :",d.client_org||"",p1);
+  if(d.representant)row("Representant :",d.representant,p1);
+  if(d.siret)row("SIRET :",d.siret,p1);
+  line(p1);
+
+  // 2. Coordonnées
+  hdr("2. COORDONNEES DU DEMANDEUR",p1);
+  row("Adresse :",d.address||"",p1);
+  row("Code postal :",d.postal_code||"",p1);
+  row("Ville :",d.ville||"",p1);
+  row("Telephone :",d.phone||"",p1);
+  row("Email :",d.email||"",p1);
+  line(p1);
+
+  // 3. Terrain
+  hdr("3. LOCALISATION DU TERRAIN",p1);
+  row("Adresse du terrain :",d.address||"",p1);
+  row("Commune :",d.ville||"",p1);
+  row("Code postal :",d.postal_code||"",p1);
+  row("Ref. cadastrales :",d.parcelle||"",p1);
+  row("N\u00b0 Dossier DP :",d.dp_number||"(a completer)",p1);
+  line(p1);
+
+  // 4. Mandataire
+  hdr("4. MANDATAIRE (le cas echeant)",p1);
+  row("Societe :","Eco Formalites",p1);
+  row("Adresse :","196 avenue Jean Lolive, 93500 Pantin",p1);
+  row("RCS :","921 468 641 (Bobigny)",p1);
+  row("Qualite :","Mandataire administratif",p1);
+  line(p1);
+
+  // 5. Description des travaux
+  hdr("5. COURTE DESCRIPTION DU PROJET",p1);
+  y-=4;
+  // Détailler chaque type de travaux
+  (d.works||[]).forEach((w,i)=>{
+    const desc=WORK_DESCRIPTIONS[w.type]||w.type;
+    const fmts=(w.formalites||[]).join(", ");
+    const kwc=w.kwc?(w.kwc==="Personnalise"?w.kwc_c:w.kwc):"";
+    p1.drawText((i+1)+". "+desc,{x:45,y,font:fontB,size:10,color:black});y-=16;
+    if(kwc){p1.drawText("   Puissance : "+kwc+" kWc",{x:55,y,font,size:9,color:gray});y-=14;}
+    if(fmts){p1.drawText("   Formalites : "+fmts,{x:55,y,font,size:9,color:gray});y-=14;}
+    y-=4;
+  });
+
+  // Page 2 si necessaire : infos complementaires
+  if(y<200||d.urbanisme_result){
+    const p2=pdf.addPage([W,H]);
+    y=H-50;
+
+    if(d.urbanisme_result){
+      const ur=d.urbanisme_result;
+      hdr("6. INFORMATIONS URBANISME",p2);
+      if(ur.mairie_nom)row("Mairie :",ur.mairie_nom,p2);
+      if(ur.mairie_adresse)row("Adresse mairie :",ur.mairie_adresse,p2);
+      if(ur.email_urbanisme)row("Email urbanisme :",ur.email_urbanisme,p2);
+      if(ur.plateforme_depot)row("Depot en ligne :",ur.plateforme_depot,p2);
+      line(p2);
+    }
+
+    // Signature
+    hdr("SIGNATURE DU DEMANDEUR",p2);
+    y-=6;
+    p2.drawText("Date : "+new Date().toLocaleDateString("fr-FR"),{x:40,y,font,size:10,color:black});y-=16;
+    p2.drawText("Signature :",{x:40,y,font,size:10,color:black});y-=60;
+    line(p2);
+
+    // Footer
+    p2.drawText("Genere automatiquement par Eco-Formalites CRM",{x:40,y:40,font,size:8,color:gray});
+    p2.drawText("Ce document est a completer et signer avant depot",{x:40,y:28,font,size:8,color:gray});
+  }
+
+  // Footer page 1
+  p1.drawText("Genere automatiquement par Eco-Formalites CRM — "+new Date().toLocaleDateString("fr-FR"),{x:40,y:40,font,size:8,color:gray});
+  p1.drawText("Ce document est a completer et signer avant depot en mairie",{x:40,y:28,font,size:8,color:gray});
+
+  return{bytes:await pdf.save(),isOfficial:false};
+}
+
+// ── Generation PDF Attestation de Mission Administrative ──
+async function generateAttestationPDF(){
+  const pdf=await PDFDocument.create();
+  const page=pdf.addPage([595.28,841.89]); // A4
+  const font=await pdf.embedFont(StandardFonts.Helvetica);
+  const fontB=await pdf.embedFont(StandardFonts.HelveticaBold);
+  const black=rgb(0,0,0);
+  const w=595.28;
+  let y=760;
+  const center=(txt,f,sz)=>{const tw=f.widthOfTextAtSize(txt,sz);page.drawText(txt,{x:(w-tw)/2,y,font:f,size:sz,color:black});y-=sz+10;};
+  const left=(txt,f,sz,indent=60)=>{page.drawText(txt,{x:indent,y,font:f,size:sz,color:black});y-=sz+8;};
+
+  center("ATTESTATION DE MISSION ADMINISTRATIVE",fontB,16);
+  y-=30;
+  // Corps du texte
+  const body=[
+    "La societe Eco Formalites, situee au 196 avenue Jean Lolive 93500 Pantin,",
+    "immatriculee au RCS de Bobigny numero 921 468 641, representee par son",
+    "President DA YEN elle-meme representee par son president Abtan Joseph.",
+  ];
+  body.forEach(l=>left(l,font,11));
+  y-=6;
+  left("agit dans le cadre du present dossier uniquement en qualite de :",font,11);
+  y-=10;
+  center("MANDATAIRE ADMINISTRATIF",fontB,13);
+  y-=10;
+  left("Elle intervient exclusivement pour :",font,11);
+  y-=4;
+  left("\u2714  La constitution du dossier administratif",fontB,11,75);
+  left("\u2714  Le depot de la declaration prealable",fontB,11,75);
+  y-=10;
+  left("La societe n'intervient en aucun cas sur :",font,11);
+  y-=4;
+  [
+    "\u2022  la conception technique du projet",
+    "\u2022  les calculs ou dimensionnements",
+    "\u2022  la conformite aux normes techniques",
+    "\u2022  la realisation des travaux",
+  ].forEach(l=>left(l,font,11,75));
+  y-=10;
+  left("Ces elements relevent exclusivement :",font,11);
+  y-=4;
+  left("\u2714  du maitre d'ouvrage (proprietaire)",fontB,11,75);
+  left("\u2714  et/ou de l'entreprise executante",fontB,11,75);
+  y-=20;
+  left("Fait pour servir et valoir ce que de droit.",font,11);
+  y-=20;
+  left("Signature + cachet",font,11);
+  y-=10;
+  // Embarquer l'image du cachet/signature
+  try{
+    const stampDataUrl=getStampDataURL();
+    const stampB64=stampDataUrl.split(",")[1];
+    const stampBytes=Uint8Array.from(atob(stampB64),c=>c.charCodeAt(0));
+    const stampImg=await pdf.embedPng(stampBytes);
+    const stampW=210;const stampH=stampW*(stampImg.height/stampImg.width);
+    page.drawImage(stampImg,{x:55,y:y-stampH,width:stampW,height:stampH});
+    y-=stampH+10;
+  }catch(e){
+    // Fallback texte si l'image echoue
+    left("ECO-FORMALITES",fontB,9,60);
+    left("196 avenue Jean Lolive - 93500 PANTIN",font,8,60);
+    left("Tel : 09.81.57.06.37 - 06.98.90.26.52",font,8,60);
+    left("yossi@eco-formalites.com",font,8,60);
+    left("RCS Bobigny : 921 468 641",font,8,60);
+  }
+
+  const bytes=await pdf.save();
+  return new File([bytes],"Attestation_Mission_Administrative.pdf",{type:"application/pdf"});
+}
+
 async function extractClientData(file){
   try{
     const raw=await extractTextUniversal(file,2);
@@ -442,6 +756,15 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--or);cursor:pointe
 .pr-ov{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:400;display:flex;align-items:center;justify-content:center;padding:20px;}
 .pr-box{background:#fff;border-radius:var(--rl);max-width:800px;width:100%;max-height:90vh;overflow:auto;box-shadow:var(--shl);display:flex;flex-direction:column;}
 .pr-hdr{padding:12px 16px;background:var(--bg3);border-bottom:1.5px solid var(--bd);display:flex;justify-content:space-between;align-items:center;}
+/* ── TABLET ── */
+@media(max-width:1024px){
+.dash-grid-2{grid-template-columns:1fr!important;}
+.dash-grid-3{grid-template-columns:1fr!important;}
+.modal-form-grid{grid-template-columns:1fr!important;}
+.modal-form-right{border-left:none!important;border-top:1.5px solid var(--bd)!important;padding-left:0!important;padding-top:16px!important;}
+.client-cards-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr))!important;}
+}
+/* ── MOBILE ── */
 @media(max-width:768px){
 .sb{transform:translateX(-100%);}.sb.open{transform:translateX(0);}
 .main{margin-left:0;}
@@ -454,15 +777,19 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--or);cursor:pointe
 .modal{max-width:100%;max-height:100vh;border-radius:0;margin:0;}
 .mhdr{padding:12px 14px 10px;flex-wrap:wrap;gap:8px;}
 .mbdy{padding:14px;}
-.mftr{padding:10px 14px;}
+.mftr{padding:10px 14px;flex-wrap:wrap;}
 table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;}
 .scard{padding:14px!important;}
 .dash-grid-2{grid-template-columns:1fr!important;}
 .dash-grid-3{grid-template-columns:1fr!important;}
-.dash-grid-kpi{grid-template-columns:1fr!important;}
+.dash-grid-kpi{grid-template-columns:1fr 1fr!important;}
 .dash-donut-row{flex-direction:column!important;align-items:center!important;}
+.dash-donut-svg{width:140px!important;}
+.dash-bar-label{width:70px!important;font-size:10px!important;}
 .modal-form-grid{grid-template-columns:1fr!important;}
 .modal-form-right{border-left:none!important;border-top:1.5px solid var(--bd)!important;padding-left:0!important;padding-top:16px!important;}
+.form-2col{grid-template-columns:1fr!important;}
+.client-cards-grid{grid-template-columns:1fr!important;}
 .tb-xls{display:none!important;}
 .dtog{width:30px!important;height:30px!important;font-size:14px!important;}
 .toast-c{left:10px;right:10px;bottom:10px;}.toast{min-width:auto;max-width:100%;}
@@ -474,6 +801,19 @@ table{display:block;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrollin
 .ged-preview{width:100%!important;min-width:auto!important;max-width:none!important;border-left:none!important;border-top:1.5px solid var(--bd)!important;max-height:350px!important;}
 .ged-empty-preview{display:none!important;}
 .tab{padding:8px 12px!important;font-size:12px!important;}
+.tabs{gap:0!important;}
+.btn{padding:6px 10px;font-size:12px;}
+.card{padding:14px!important;}
+h2{font-size:16px!important;}
+h3{font-size:13px!important;}
+}
+/* ── VERY SMALL MOBILE ── */
+@media(max-width:380px){
+.dash-grid-kpi{grid-template-columns:1fr!important;}
+.content{padding:7px;}
+.scard{padding:10px!important;}
+.card{padding:10px!important;}
+.mbdy{padding:10px;}
 }
 `;
 
@@ -828,7 +1168,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
         <div className="modal-form-grid" style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:20}}>
           <div>
             {/* Statut + Responsable en haut */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+            <div className="form-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
               <div className="fg">
                 <label className="lbl">Statut du dossier</label>
                 <select value={f.status} onChange={e=>set("status",e.target.value)}>{ALL_STATUSES.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}</select>
@@ -874,7 +1214,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
             </div>
             {/* Client info */}
             <div className="sec" style={{marginBottom:12}}>Informations client</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+            <div className="form-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
               <div className="fg"><label className="lbl">Nom *</label><input value={f.client_nom||""} onChange={e=>set("client_nom",e.target.value)} placeholder="Nom de famille"/></div>
               <div className="fg"><label className="lbl">Prénom *</label><input value={f.client_prenom||""} onChange={e=>set("client_prenom",e.target.value)} placeholder="Prénom"/></div>
               <div className="fg">
@@ -914,7 +1254,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
             <div style={{display:"flex",gap:12,flexWrap:"wrap",alignItems:"center",marginTop:14,padding:"11px 14px",background:"var(--bg3)",borderRadius:"var(--r)",border:"1.5px solid var(--bd)"}}>
               <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:500}}><input type="checkbox" checked={f.installed} onChange={e=>set("installed",e.target.checked)}/>Client installe</label>
               {isSA&&<label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:12,fontWeight:500}}><input type="checkbox" checked={f.paid} onChange={e=>set("paid",e.target.checked)}/>Paye</label>}
-              {isSA&&<div className="fg" style={{flexDirection:"row",alignItems:"center",gap:7}}><label className="lbl" style={{whiteSpace:"nowrap"}}>Montant €</label><input type="number" value={f.amount} onChange={e=>set("amount",Number(e.target.value))} style={{width:90}}/></div>}
+              {isSA&&<div className="fg" style={{flexDirection:"row",alignItems:"center",gap:7}}><label className="lbl" style={{whiteSpace:"nowrap"}}>Montant €</label><input type="number" value={f.amount} onChange={e=>set("amount",Number(e.target.value))} style={{width:90,minWidth:70}}/></div>}
             </div>
           </div>
           {/* RIGHT: comments */}
@@ -1533,7 +1873,17 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
     return mq&&ms&&ma&&mw&&mf&&mn&&mcd&&mud;
   }),[dossiers,globalQ,globalFilters]);
 
-  const create=async(d,files)=>{const nd={...d,id:dossierId(d.dp_number,d.id),created_by:currentUser.id};setDossiers(p=>[nd,...p]);setCreating(false);toast("Dossier cree !","s");if(files&&files.length>0){try{await uploadDocuments(nd.id,files,"autre");toast(files.length+" document(s) joint(s)","s");}catch(err){toast("Erreur upload : "+err.message,"e");}}};
+  const create=async(d,files)=>{
+    const nd={...d,id:dossierId(d.dp_number,d.id),created_by:currentUser.id};
+    setDossiers(p=>[nd,...p]);setCreating(false);toast("Dossier cree !","s");
+    // Upload fichiers joints par l'utilisateur
+    if(files&&files.length>0){try{await uploadDocuments(nd.id,files,"autre");toast(files.length+" document(s) joint(s)","s");}catch(err){toast("Erreur upload : "+err.message,"e");}}
+    // Auto-generation et upload de l'attestation de mission administrative
+    try{
+      const attestation=await generateAttestationPDF();
+      await uploadDocuments(nd.id,[attestation],"attestation");
+    }catch(err){console.error("Attestation auto-upload:",err);}
+  };
   const upd=d=>{
     // Si l'ID a changé (DP extrait → nouvel ID), on retrouve l'ancien via _oldId
     const lookupId=d._oldId||d.id;
@@ -1883,7 +2233,7 @@ function Dashboard({dossiers}){
             const barPalette=["#E06050","#E8943C","#E8C840","#A0824B","#4A5A18","#A05828","#E0A468","#C07040"];
             const col=barPalette[i%barPalette.length];
             return <div key={name} style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:11,fontWeight:600,width:100,flexShrink:0,color:"var(--tx3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span>
+              <span className="dash-bar-label" style={{fontSize:11,fontWeight:600,width:100,flexShrink:0,color:"var(--tx3)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{name}</span>
               <div style={{flex:1,background:"var(--bd)",borderRadius:20,height:20,overflow:"hidden"}}>
                 <div style={{width:(count/maxPartner*100)+"%",height:"100%",background:`linear-gradient(90deg,${col},${col}bb)`,borderRadius:20,transition:"width .6s ease",display:"flex",alignItems:"center",justifyContent:"flex-end",paddingRight:8,minWidth:28}}>
                   <span style={{fontSize:9,fontWeight:700,color:"#fff"}}>{count}</span>
@@ -1900,7 +2250,7 @@ function Dashboard({dossiers}){
           <DashIc type="pie" size={15} color="var(--tx4)"/>Statuts des DP
         </h3>
         <div className="dash-donut-row" style={{display:"flex",alignItems:"center",gap:20}}>
-          <svg width="180" height="180" viewBox="0 0 180 180" style={{flexShrink:0}}>
+          <svg viewBox="0 0 180 180" className="dash-donut-svg" style={{flexShrink:0,width:180,maxWidth:"100%",height:"auto"}}>
             {donutSlices.map((sl,i)=>{
               const circ=2*Math.PI*donutR;
               const dashLen=circ*(sl.end-sl.start);
@@ -2102,7 +2452,7 @@ function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
             </div>}
             {kbR?.error&&<div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:"var(--r)",padding:"7px 10px",fontSize:11,color:"#b91c1c",marginTop:8}}>{kbR.error}</div>}
           </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div className="form-2col" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div className="fg" style={{gridColumn:"1/-1"}}><label className="lbl">Nom entreprise *</label><input value={f.name} onChange={e=>setF(x=>({...x,name:e.target.value}))}/></div>
             <div className="fg" style={{gridColumn:"1/-1"}}><label className="lbl">Adresse</label><input value={f.address} onChange={e=>setF(x=>({...x,address:e.target.value}))}/></div>
             <div className="fg"><label className="lbl">Representant</label><input value={f.representant} onChange={e=>setF(x=>({...x,representant:e.target.value}))}/></div>
@@ -2113,7 +2463,7 @@ function Clients({dossiers,clientsOrg,setClientsOrg,toast}){
         <div className="mftr"><button className="btn btn-s" onClick={()=>{setCreating(false);setEditC(null);setF({name:"",address:"",siret:"",representant:"",email:""});setScan(false);setKbR(null);}}>Annuler</button><button className="btn btn-p" onClick={save}><Ic n="check" s={13}/>Sauvegarder</button></div>
       </div>
     </div>}
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:11}}>
+    <div className="client-cards-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:11}}>
       {!filtered.length&&<p style={{color:"var(--tx4)",fontSize:12}}>Aucun partenaire</p>}
       {filtered.map(c=>{const doss=dossiers.filter(d=>d.client_org===c.name);return<div className="card" key={c.id}>
         <div style={{display:"flex",gap:10,marginBottom:10}}>
