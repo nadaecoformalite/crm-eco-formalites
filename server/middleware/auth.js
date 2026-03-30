@@ -9,7 +9,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production-eco-formal
  */
 function authMiddleware(req, res, next) {
   // Routes publiques : login, health, share links
-  const publicPaths = ['/api/login', '/api/register', '/api/health', '/api/share/'];
+  const publicPaths = ['/api/login', '/api/register', '/api/health', '/api/share/', '/api/cerfa-pdf', '/api/cerfa-stamp'];
   if (publicPaths.some(p => req.path.startsWith(p))) {
     return next();
   }

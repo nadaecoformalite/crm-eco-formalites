@@ -28,7 +28,7 @@ const DOSSIERS = [
   {
     id: "DOS-2024-002", client: "Emilie Rousseau", email: "emilie@example.com", phone: "06 98 76 54 32",
     address: "5 avenue Victor Hugo, 69001 Lyon", dp_number: "DP 069 011 24 00042",
-    works: [{ type: "Panneaux Solaires", dossier_type: "Recuperation TVA" }],
+    works: [{ type: "Panneaux Solaires 500", dossier_type: "Recuperation TVA" }],
     status: "valide", assignee: "Nada", created: "2024-10-08", updated: "2024-11-30", paid: true, amount: 800,
     docs: [{ name: "Facture_Panneaux.pdf", size: "180 KB", date: "2024-10-10" }],
     notes: [{ author: "Nada", date: "2024-11-30", text: "Dossier valide, TVA recuperee." }],

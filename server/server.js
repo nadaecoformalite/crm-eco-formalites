@@ -1054,7 +1054,7 @@ async function searchMairieGoogle(ville, codep) {
 
   try {
     const query = `mairie ${ville}${codep ? ' ' + codep : ''}`;
-    const resp = await fetch('https://places.googleapis.com/v1/places:searchText', {
+    const resp = await fetch('https://places.googleapis.coRm/v1/places:searchText', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1193,6 +1193,111 @@ app.post('/api/urbanisme/lookup', async (req, res) => {
     console.error('Urbanisme lookup error:', err);
     res.status(500).json({ error: err.message || 'Erreur lors de la recherche urbanisme' });
   }
+});
+
+// ── Proxy CERFA officiel (cache local) ────────────────────────────────────────
+const CERFA_CACHE_PATH = path.join(__dirname, 'cerfa_16702.pdf');
+const CERFA_OFFICIAL_URL = 'https://www.formulaires.service-public.gouv.fr/gf/cerfa_16702.do';
+
+function downloadCerfaFromGouv() {
+  return new Promise((resolve, reject) => {
+    const doRequest = (url, redirects) => {
+      if (redirects > 5) return reject(new Error('Trop de redirections'));
+      const mod = url.startsWith('https') ? https : require('http');
+      mod.get(url, { headers: { 'User-Agent': 'EcoFormalites-CRM/1.0' }, timeout: 15000 }, (resp) => {
+        if (resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
+          return doRequest(resp.headers.location, redirects + 1);
+        }
+        if (resp.statusCode !== 200) return reject(new Error('Status ' + resp.statusCode));
+        const chunks = [];
+        resp.on('data', c => chunks.push(c));
+        resp.on('end', () => resolve(Buffer.concat(chunks)));
+        resp.on('error', reject);
+      }).on('error', reject);
+    };
+    doRequest(CERFA_OFFICIAL_URL, 0);
+  });
+}
+
+app.get('/api/cerfa-pdf', async (_req, res) => {
+  try {
+    // Servir depuis le cache si le fichier existe et a moins de 30 jours
+    if (fs.existsSync(CERFA_CACHE_PATH)) {
+      const stat = fs.statSync(CERFA_CACHE_PATH);
+      const ageMs = Date.now() - stat.mtimeMs;
+      if (ageMs < 30 * 24 * 60 * 60 * 1000 && stat.size > 10000) {
+        console.log('📄 CERFA servi depuis cache local (age:', Math.round(ageMs/86400000), 'jours, taille:', stat.size, ')');
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Cache-Control', 'public, max-age=86400');
+        res.setHeader('X-Cerfa-Source', 'cache');
+        return fs.createReadStream(CERFA_CACHE_PATH).pipe(res);
+      }
+    }
+    // Télécharger depuis service-public.gouv.fr
+    console.log('📄 CERFA → Téléchargement depuis', CERFA_OFFICIAL_URL);
+    const buffer = await downloadCerfaFromGouv();
+    if (buffer.length < 10000) throw new Error('PDF reçu trop petit (' + buffer.length + ' bytes), probablement une page HTML erreur');
+    // Vérifier que c'est bien un PDF (signature %PDF)
+    if (buffer.slice(0, 5).toString() !== '%PDF-') throw new Error('Le fichier reçu n\'est pas un PDF valide');
+    // Sauvegarder en cache
+    fs.writeFileSync(CERFA_CACHE_PATH, buffer);
+    console.log('✅ CERFA 16702*02 téléchargé et mis en cache (' + buffer.length + ' bytes)');
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('X-Cerfa-Source', CERFA_OFFICIAL_URL);
+    res.send(buffer);
+  } catch (err) {
+    console.error('❌ Erreur proxy CERFA:', err.message);
+    res.status(502).json({ error: 'Impossible de récupérer le CERFA officiel depuis service-public.gouv.fr', detail: err.message });
+  }
+});
+
+// ── Forcer la mise à jour du CERFA (supprime le cache et re-télécharge) ──────
+app.post('/api/cerfa-refresh', async (_req, res) => {
+  try {
+    if (fs.existsSync(CERFA_CACHE_PATH)) fs.unlinkSync(CERFA_CACHE_PATH);
+    const buffer = await downloadCerfaFromGouv();
+    if (buffer.length < 10000) throw new Error('PDF reçu trop petit');
+    fs.writeFileSync(CERFA_CACHE_PATH, buffer);
+    res.json({ success: true, size: buffer.length, source: CERFA_OFFICIAL_URL });
+  } catch (err) {
+    console.error('Erreur refresh CERFA:', err.message);
+    res.status(502).json({ error: 'Impossible de rafraîchir le CERFA', detail: err.message });
+  }
+});
+
+// ── Tampon signature Eco Formalites (image PNG) ──────────────────────────────
+const STAMP_PATH = path.join(__dirname, 'tampon.png');
+app.get('/api/cerfa-stamp', (_req, res) => {
+  if (fs.existsSync(STAMP_PATH)) {
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    return fs.createReadStream(STAMP_PATH).pipe(res);
+  }
+  res.status(404).json({ error: 'Tampon non trouvé. Placez tampon.png dans server/' });
+});
+
+// ── Sauvegarde/Chargement des CERFA modifiés par dossier ─────────────────────
+const CERFA_SAVE_DIR = path.join(__dirname, 'uploads', 'cerfa');
+if (!fs.existsSync(CERFA_SAVE_DIR)) fs.mkdirSync(CERFA_SAVE_DIR, { recursive: true });
+
+app.post('/api/cerfa-save/:dossierId', express.raw({ type: 'application/pdf', limit: '20mb' }), (req, res) => {
+  const id = req.params.dossierId.replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!id) return res.status(400).json({ error: 'ID dossier invalide' });
+  const filePath = path.join(CERFA_SAVE_DIR, id + '.pdf');
+  fs.writeFileSync(filePath, req.body);
+  console.log('💾 CERFA sauvegardé pour dossier', id, '(' + req.body.length + ' bytes)');
+  res.json({ success: true, size: req.body.length });
+});
+
+app.get('/api/cerfa-save/:dossierId', (req, res) => {
+  const id = req.params.dossierId.replace(/[^a-zA-Z0-9_-]/g, '');
+  const filePath = path.join(CERFA_SAVE_DIR, id + '.pdf');
+  if (fs.existsSync(filePath)) {
+    res.setHeader('Content-Type', 'application/pdf');
+    return fs.createReadStream(filePath).pipe(res);
+  }
+  res.status(404).json({ error: 'Aucun CERFA sauvegardé pour ce dossier' });
 });
 
 // ── Health check ──────────────────────────────────────────────────────────────

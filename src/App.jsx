@@ -12,8 +12,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.mi
 const LOGO_SRC = "data:image/jpeg;base64,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";
 
 const EMPLOYEES = ["Nada","Sarah","David","Jimmy","Sonia","Harry","Farah","Fabienne","Ounza","Yael"];
-const WORK_TYPES = ["ITE","PAC","Panneaux Solaires","Systeme Solaire Combine","Menuiseries Exterieures","Abri Jardin","Pergola","Carport"];
-const WORK_COLORS = {"ITE":"#E06050","PAC":"#E8943C","Panneaux Solaires":"#E8C840","Systeme Solaire Combine":"#A0824B","Menuiseries Exterieures":"#4A5A18","Abri Jardin":"#A05828","Pergola":"#E0A468","Carport":"#C07040"};
+const WORK_TYPES = ["ITE","PAC","Panneaux Solaires 500","Panneaux Solaires 375","Systeme Solaire Combine","Menuiseries Exterieures","Abri Jardin","Pergola","Carport"];
+const WORK_COLORS = {"ITE":"#E06050","PAC":"#E8943C","Panneaux Solaires 500":"#E8C840","Panneaux Solaires 375":"#D4B830","Systeme Solaire Combine":"#A0824B","Menuiseries Exterieures":"#4A5A18","Abri Jardin":"#A05828","Pergola":"#E0A468","Carport":"#C07040"};
 const AVATAR_COLORS = ["#E06050","#E8943C","#A0824B","#4A5A18","#A05828","#E0A468","#C07040","#E8C840","#8B6914","#6B7A30"];
 function avatarColor(name){if(!name)return AVATAR_COLORS[0];let h=0;for(let i=0;i<name.length;i++){h=name.charCodeAt(i)+((h<<5)-h);}return AVATAR_COLORS[Math.abs(h)%AVATAR_COLORS.length];}
 const KWC_OPTIONS = ["3.375 kwc","3.5 kwc","3.75 kwc","4 kwc","4.125 kwc","4.5 kwc","5 kwc","5.25 kwc","5.5 kwc","6 kwc","6.75 kwc","7 kwc","7.5 kwc","8 kwc","8.25 kwc","9 kwc","Personnalise"];
@@ -90,7 +90,7 @@ const MOCK = [
    comments:[{author:"Sarah",date:"2024-11-20",text:"Dossier en attente de validation EDF.",from_client:false}],
    avancement:{dp_checked:true,dp_envoi:"2024-11-16",dp_note:"",racc_checked:false,racc_date:"",racc_status:"",racc_note:"",cons_checked:false,cons_date:"",cons_note:"",tva_checked:false,tva_date:"",tva_note:""}},
   {id:"08/10/2024",client:"Emilie Rousseau",client_org:"Globe Energy",email:"emilie@example.com",phone:"06 98 76 54 32",address:"5 avenue Victor Hugo, 69001 Lyon",postal_code:"69001",dp_number:"DP 069 011 24 00042",parcelle:"",
-   works:[{type:"Panneaux Solaires",formalites:["Recuperation de TVA"],kwc:"6 kwc"}],
+   works:[{type:"Panneaux Solaires 500",formalites:["Recuperation de TVA"],kwc:"6 kwc"}],
    status:"valide",assignee:"Nada",created:"2024-10-08",updated:"2025-02-28",paid:true,amount:800,installed:true,
    docs:[{name:"Facture_Panneaux.pdf",size:"180 KB",date:"2024-10-10",url:null}],
    comments:[{author:"Nada",date:"2024-11-30",text:"Dossier valide, TVA recuperee.",from_client:false}],
@@ -279,245 +279,386 @@ async function extractKbis(file){
   }catch{return null;}
 }
 
-// ── Generation CERFA Demande Prealable (R11646 / 13703) ──
-// Telecharge le formulaire officiel depuis service-public.fr et remplit les champs AcroForm
-const CERFA_URL="https://www.formulaires.service-public.fr/gf/cerfa_13703.do";
-const CERFA_FALLBACK="https://www.formulaires.service-public.fr/gf/getNotice.do?cerfaNotice=51434&cerfaFormulaire=13703*09";
+// ── Date du jour (utilisée dans dashboard + CERFA) ──
+function todayDDMMYYYY(){
+  const now=new Date();
+  return String(now.getDate()).padStart(2,"0")+"/"+String(now.getMonth()+1).padStart(2,"0")+"/"+now.getFullYear();
+}
+// Format CERFA comb (8 chiffres sans séparateurs : JJMMAAAA)
+function todayCERFA(){
+  const now=new Date();
+  return String(now.getDate()).padStart(2,"0")+String(now.getMonth()+1).padStart(2,"0")+now.getFullYear();
+}
 
-// Mapping type travaux → description CERFA
+// ── Generation CERFA Demande Prealable 16702*02 ──
+// Le PDF officiel est récupéré via /api/cerfa-pdf (proxy serveur → service-public.gouv.fr)
+
+// Mapping type travaux → description CERFA (statique, pour types sans calcul dynamique)
 const WORK_DESCRIPTIONS={
-  "ITE":"Isolation thermique par l'exterieur (ITE) des facades",
-  "PAC":"Installation d'une pompe a chaleur (PAC) - unite exterieure",
-  "Panneaux Solaires":"Installation de panneaux photovoltaiques en toiture",
-  "Systeme Solaire Combine":"Installation d'un systeme solaire combine (SSC) en toiture",
-  "Menuiseries Exterieures":"Remplacement des menuiseries exterieures (fenetres, portes)",
-  "Abri Jardin":"Construction d'un abri de jardin",
-  "Pergola":"Construction d'une pergola",
-  "Carport":"Construction d'un carport",
+  "Systeme Solaire Combine":"Installation de 4 capteurs solaires thermiques pour une surface totale de 8,81 m2, en surimposition de toiture. Ces travaux visent a ameliorer la production d'eau chaude sanitaire et le chauffage de l'habitation.",
+  "ITE":"Application d'une isolation thermique par l'exterieur (ITE) sur les facades Nord, Sud, Est et Ouest du batiment. Les travaux consistent en la pose d'un systeme d'enduit sur isolant conforme a la reglementation thermique en vigueur.",
+  "PAC":"Installation d'une pompe a chaleur de [PUISSANCE] kW d'une puissance sonore de [SONORE] dBA, posee a l'exterieur du batiment sur la facade [ORIENTATION] de la maison.",
+  "Menuiseries Exterieures":"Remplacement des menuiseries exterieures (fenetres et portes) sur les facades Nord, Sud, Est et Ouest de l'habitation. Les nouvelles menuiseries sont conformes aux exigences de performance thermique en vigueur.",
+  "Abri Jardin":"Construction d'un abri de jardin dans la propriete.",
+  "Pergola":"Construction d'une pergola adossee ou autoportee.",
+  "Carport":"Construction d'un carport pour le stationnement de vehicule.",
 };
 
+// Dimensions panneaux solaires (en metres)
+const PANEL_SPECS={"Panneaux Solaires 500":{w:500,dimL:2.09,dimW:1.13},"Panneaux Solaires 375":{w:375,dimL:1.75,dimW:1.03}};
+
+// Genere la description CERFA dynamique pour les panneaux solaires a partir du kwc
+function buildSolarDesc(workType,kwcRaw){
+  const spec=PANEL_SPECS[workType];
+  if(!spec||!kwcRaw)return WORK_DESCRIPTIONS[workType]||workType;
+  const kwcStr=kwcRaw==="Personnalise"?null:kwcRaw;
+  if(!kwcStr)return "Le projet consiste en l'installation de panneaux photovoltaiques "+spec.w+"W en surimposition de toiture. Ces travaux visent a ameliorer l'autoconsommation energetique de l'habitation.";
+  const kwcNum=parseFloat(kwcStr);
+  if(!kwcNum||isNaN(kwcNum))return WORK_DESCRIPTIONS[workType]||workType;
+  const nbPanels=Math.round((kwcNum*1000)/spec.w);
+  const surfaceUnit=spec.dimL*spec.dimW;
+  const totalSurface=(nbPanels*surfaceUnit).toFixed(2).replace(".",",");
+  const kwcDisplay=String(kwcNum).replace(".",",");
+  return "Le projet consiste en l'installation de "+nbPanels+" panneaux photovoltaiques "+spec.w+"W en surimposition de toiture. Cela represente une puissance totale de "+kwcDisplay+" kWc pour une surface de captation d'environ "+totalSurface+" m2. Ces travaux visent a ameliorer l'autoconsommation energetique de l'habitation.";
+}
+
+// Genere la description complete d'un travail pour le CERFA
+function buildWorkDesc(w){
+  if(PANEL_SPECS[w.type])return buildSolarDesc(w.type,w.kwc==="Personnalise"?w.kwc_c:w.kwc);
+  return WORK_DESCRIPTIONS[w.type]||w.type;
+}
+
 async function fetchCerfaPDF(){
-  // Tente de telecharger le CERFA officiel
-  const urls=[CERFA_URL,CERFA_FALLBACK];
-  for(const url of urls){
-    try{
-      const res=await fetch(url,{mode:"cors"});
-      if(res.ok){
-        const ct=res.headers.get("content-type")||"";
-        if(ct.includes("pdf")){
-          return new Uint8Array(await res.arrayBuffer());
-        }
-      }
-    }catch{}
-  }
-  // Si CORS bloque (probable), passer par un proxy ou generer from scratch
-  // Tentative via le proxy API du serveur
+  // Récupérer le CERFA 16702*02 UNIQUEMENT depuis notre serveur backend
+  // qui le télécharge depuis https://www.formulaires.service-public.gouv.fr/gf/cerfa_16702.do
   try{
-    const API_URL=import.meta.env.VITE_API_URL||'/api';
-    const token=localStorage.getItem('auth_token');
-    const res=await fetch(API_URL+'/proxy-pdf?url='+encodeURIComponent(CERFA_URL),{
-      headers:token?{Authorization:'Bearer '+token}:{}
-    });
+    const res=await fetch('/api/cerfa-pdf');
     if(res.ok){
       const ct=res.headers.get("content-type")||"";
-      if(ct.includes("pdf"))return new Uint8Array(await res.arrayBuffer());
+      if(ct.includes("pdf")){
+        const bytes=new Uint8Array(await res.arrayBuffer());
+        console.log("✅ CERFA 16702*02 chargé depuis service-public.gouv.fr (",bytes.byteLength,"bytes)");
+        return bytes;
+      }
     }
-  }catch{}
+    console.error("❌ CERFA: réponse invalide",res.status);
+  }catch(e){console.error("❌ CERFA fetch failed:",e);}
   return null;
 }
 
-async function generateCerfaPDF(dossier){
+async function generateCerfaPDF(dossier,currentUser){
   const d=dossier;
-  const worksDesc=(d.works||[]).map(w=>WORK_DESCRIPTIONS[w.type]||w.type).join(" ; ");
-  const kwcInfo=(d.works||[]).map(w=>w.kwc).filter(Boolean).join(", ");
-  const fullDesc=worksDesc+(kwcInfo?" - Puissance : "+kwcInfo:"");
+  const fullDesc=(d.works||[]).map(w=>buildWorkDesc(w)).join("\n");
+  const parseAddr=(addr)=>{
+    if(!addr)return{num:"",voie:"",cp:"",ville:""};
+    const m=addr.match(/^(\d+\s*(?:bis|ter)?)\s+(.+?)(?:,\s*(\d{5})\s+(.+))?$/i);
+    if(m)return{num:m[1]||"",voie:m[2]||"",cp:m[3]||"",ville:m[4]||""};
+    return{num:"",voie:addr,cp:"",ville:""};
+  };
+  const clientAddr=parseAddr(d.address);
+  const cp=d.postal_code||clientAddr.cp||"";
+  const ville=d.ville||clientAddr.ville||"";
+  const parseParcelle=(p)=>{
+    if(!p)return{prefixe:"000",section:"",numero:""};
+    const m=p.match(/(\d{3})?\s*([A-Z]{1,2})\s*(\d+)/i);
+    if(m)return{prefixe:m[1]||"000",section:(m[2]||"").toUpperCase(),numero:m[3]||""};
+    return{prefixe:"000",section:"",numero:p};
+  };
+  const parc=parseParcelle(d.parcelle);
+  // Email dynamique du user connecte
+  const userEmail=(currentUser&&currentUser.email)||"yossi@eco-formalites.com";
+  const emailParts=userEmail.split("@");
+  const emailUser=emailParts[0]||"yossi";
+  const emailDomain=emailParts[1]||"eco-formalites.com";
+  // Puissance crete totale si solaire
+  const totalKwc=(d.works||[]).reduce((sum,w)=>{
+    if(!w.kwc)return sum;
+    const v=w.kwc==="Personnalise"?parseFloat(w.kwc_c):parseFloat(w.kwc);
+    return sum+(isNaN(v)?0:v);
+  },0);
 
-  // Tenter de charger le CERFA officiel avec champs AcroForm
   let pdfBytes=await fetchCerfaPDF();
-  if(pdfBytes){
-    try{
-      const pdf=await PDFDocument.load(pdfBytes);
-      const form=pdf.getForm();
-      const fields=form.getFields();
+  if(!pdfBytes)throw new Error("Impossible de charger le formulaire CERFA officiel. Verifiez que le serveur backend est demarre.");
 
-      // Mapping des champs connus du CERFA 13703
-      const fieldMap={
-        // Identite du demandeur
-        "nom":d.client_nom||"",
-        "prenom":d.client_prenom||"",
-        "Nom":d.client_nom||"",
-        "Prénom":d.client_prenom||"",
-        "topmenu_01[0].Sous-menu_01[0].Nom[0]":d.client_nom||"",
-        "topmenu_01[0].Sous-menu_01[0].Prénom[0]":d.client_prenom||"",
-        // Coordonnees
-        "topmenu_01[0].Sous-menu_01[0].Adresse[0]":d.address||"",
-        "topmenu_01[0].Sous-menu_01[0].Code postal[0]":d.postal_code||"",
-        "topmenu_01[0].Sous-menu_01[0].Localite[0]":d.ville||"",
-        "topmenu_01[0].Sous-menu_01[0].Téléphone[0]":d.phone||"",
-        "topmenu_01[0].Sous-menu_01[0].Courriel[0]":d.email||"",
-        "adresse":d.address||"",
-        "code_postal":d.postal_code||"",
-        "commune":d.ville||"",
-        "localite":d.ville||"",
-        "telephone":d.phone||"",
-        "courriel":d.email||"",
-        "email":d.email||"",
-        // Terrain
-        "topmenu_01[0].Sous-menu_02[0].Adresse du terrain[0]":d.address||"",
-        "topmenu_01[0].Sous-menu_02[0].Code postal[0]":d.postal_code||"",
-        "topmenu_01[0].Sous-menu_02[0].Localite[0]":d.ville||"",
-        "topmenu_01[0].Sous-menu_02[0].Références cadastrales[0]":d.parcelle||"",
-        "references_cadastrales":d.parcelle||"",
-        "section":d.parcelle||"",
-        "parcelle":d.parcelle||"",
-        // Description
-        "courte_description":fullDesc,
-        "description_travaux":fullDesc,
-        "description":fullDesc,
-        // Mandataire
-        "mandataire_nom":"Eco Formalites",
-        "mandataire_adresse":"196 avenue Jean Lolive 93500 Pantin",
-      };
+  const pdf=await PDFDocument.load(pdfBytes);
+  const form=pdf.getForm();
+  const setTF=(name,val)=>{try{form.getTextField(name).setText(val||"");}catch{}};
+  const setCB=(name)=>{try{form.getCheckBox(name).check();}catch{}};
 
-      // Remplir chaque champ trouve
-      for(const f of fields){
+  // ── 1.2 Identite personne morale (conforme tampon Eco Formalites) ──
+  setTF("D2D_denomination","ECO FORMALITES");
+  setTF("D2R_raison","ECO FORMALITES");
+  setTF("D2S_siret","92146864100011");
+  setTF("D2J_type","SAS");
+  setTF("D2N_nom","ABTAN");
+  setTF("D2P_prenom","JOSEPH");
+
+  // ── 2. Coordonnees declarant — email dynamique [EMAIL_USER] ──
+  setTF("D3N_numero","196");
+  setTF("D3V_voie","AVENUE JEAN LOLIVE");
+  setTF("D3L_localite","PANTIN");
+  setTF("D3C_code","93500");
+  setTF("D3T_telephone","0981370637");
+  setTF("D5GE1_email",emailUser);
+  setTF("D5GE2_email",emailDomain);
+  setCB("D5A_acceptation");
+
+  // ── 3.1 Localisation du terrain ──
+  setTF("T2Q_numero",clientAddr.num);
+  setTF("T2V_voie",clientAddr.voie);
+  setTF("T2L_localite",ville);
+  setTF("T2C_code",cp);
+  setTF("T2F_prefixe",parc.prefixe);
+  setTF("T2S_section",parc.section);
+  setTF("T2N_numero",parc.numero);
+
+  // ── 4.1 Nature des travaux ──
+  setCB("C2ZB1_existante");
+  setTF("C2ZD1_description","Declaration deposee par mandataire administratif. Les elements techniques et la realisation des travaux relevent de l'entreprise executante.\n\n"+fullDesc);
+
+  // ── 4.2 Infos complementaires ──
+  setCB("C2ZF1_principale");
+  if(totalKwc>0)setTF("C2ZP1_crete",String(totalKwc));
+
+  // ── 7. Engagement — Fait a PANTIN, le JJ/MM/AAAA ──
+  setTF("E1L_lieu","PANTIN");
+  setTF("E1D_date",todayCERFA());
+  setTF("E1S_signature","ECO FORMALITES");
+
+  // ── Tampon signature : injecter l'image PNG dans la zone signature ──
+  try{
+    const stampUrls=["/api/cerfa-stamp"];
+    const API_URL=import.meta.env.VITE_API_URL;
+    if(API_URL)stampUrls.push(API_URL+"/cerfa-stamp");
+    let stampBytes=null;
+    for(const u of stampUrls){
+      try{const r=await fetch(u);if(r.ok){const b=new Uint8Array(await r.arrayBuffer());if(b.byteLength>500){stampBytes=b;break;}}}catch{}
+    }
+    if(stampBytes){
+      let img;
+      try{img=await pdf.embedPng(stampBytes);}catch{img=await pdf.embedJpg(stampBytes);}
+      const pages=pdf.getPages();
+      // Page 6 (index 5) — case bleue à côté de "ECO FORMALITES"
+      const signPage=pages.length>=6?pages[5]:pages[pages.length-1];
+      const imgW=80;
+      const imgH=imgW*(img.height/img.width);
+      signPage.drawImage(img,{x:490,y:535,width:imgW,height:imgH});
+    }
+  }catch(e){console.warn("Tampon signature non insere:",e);}
+
+  // ── Recepisse — NE PAS remplir (zone réservée à la mairie) ──
+
+  // PDF NON aplati : champs editables, curseur actif dans les cases
+  return{bytes:await pdf.save(),isOfficial:true};
+}
+
+// ── Editeur CERFA intégré (remplir les cases bleues sans Acrobat) ──
+function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
+  const containerRef=useRef(null);
+  const [pages,setPages]=useState([]);
+  const [fields,setFields]=useState({});
+  const [currentPage,setCurrentPage]=useState(0);
+  const [saving,setSaving]=useState(false);
+  const [scale]=useState(1.5);
+  const [fieldMeta,setFieldMeta]=useState([]);
+  const [freeTexts,setFreeTexts]=useState({});
+  const [editingFree,setEditingFree]=useState(null);
+
+  // Charger le PDF et extraire les champs AcroForm + rendre les pages
+  useEffect(()=>{
+    if(!pdfBytes)return;
+    let cancelled=false;
+    (async()=>{
+      const pdfDoc=await PDFDocument.load(pdfBytes,{ignoreEncryption:true});
+      const form=pdfDoc.getForm();
+      const allFields=form.getFields();
+      const pdfPages=pdfDoc.getPages();
+      // Map page ref string → index (fix: utiliser toString pour comparaison fiable)
+      const refToIdx=new Map();
+      pdfPages.forEach((pg,i)=>refToIdx.set(pg.ref.toString(),i));
+      const meta=[];
+      const vals={};
+      allFields.forEach(f=>{
         const name=f.getName();
-        // Chercher une correspondance directe ou partielle
-        let val=fieldMap[name];
-        if(!val){
-          const nameLow=name.toLowerCase();
-          // Matching partiel
-          if(nameLow.includes("nom")&&!nameLow.includes("pre"))val=d.client_nom||"";
-          else if(nameLow.includes("prénom")||nameLow.includes("prenom"))val=d.client_prenom||"";
-          else if(nameLow.includes("adresse")&&nameLow.includes("terrain"))val=d.address||"";
-          else if(nameLow.includes("adresse")&&!nameLow.includes("terrain"))val=d.address||"";
-          else if(nameLow.includes("code")&&nameLow.includes("postal"))val=d.postal_code||"";
-          else if(nameLow.includes("localit")||nameLow.includes("commune")||nameLow.includes("ville"))val=d.ville||"";
-          else if(nameLow.includes("tel")||nameLow.includes("phone"))val=d.phone||"";
-          else if(nameLow.includes("courriel")||nameLow.includes("mail")||nameLow.includes("email"))val=d.email||"";
-          else if(nameLow.includes("cadastr")||nameLow.includes("parcelle")||nameLow.includes("section"))val=d.parcelle||"";
-          else if(nameLow.includes("description")||nameLow.includes("travaux")||nameLow.includes("nature"))val=fullDesc;
-        }
-        if(val){
-          try{
-            const tf=form.getTextField(name);
-            tf.setText(val);
-          }catch{}
-        }
+        const isText=f.constructor.name==="PDFTextField";
+        if(!isText)return;
+        try{vals[name]=form.getTextField(name).getText()||"";}catch{vals[name]="";}
+        f.acroField.getWidgets().forEach(w=>{
+          const rect=w.getRectangle();
+          const pi=refToIdx.get(w.P().toString());
+          if(pi!==undefined){
+            let maxLen=0;try{maxLen=form.getTextField(name).getMaxLength();}catch{}
+            meta.push({name,pageIndex:pi,x:rect.x,y:rect.y,w:rect.width,h:rect.height,maxLen});
+          }
+        });
+      });
+      if(cancelled)return;
+      setFieldMeta(meta);
+      setFields(vals);
+      // Rendre les pages avec pdf.js
+      const loadTask=pdfjsLib.getDocument({data:new Uint8Array(pdfBytes)});
+      const pdf=await loadTask.promise;
+      const rendered=[];
+      for(let i=0;i<pdf.numPages;i++){
+        const pg=await pdf.getPage(i+1);
+        const vp=pg.getViewport({scale});
+        const canvas=document.createElement("canvas");
+        canvas.width=vp.width;canvas.height=vp.height;
+        await pg.render({canvasContext:canvas.getContext("2d"),viewport:vp}).promise;
+        rendered.push({dataUrl:canvas.toDataURL(),width:vp.width,height:vp.height});
       }
+      if(!cancelled)setPages(rendered);
+    })();
+    return()=>{cancelled=true;};
+  },[pdfBytes,scale]);
 
-      form.flatten();
-      return{bytes:await pdf.save(),isOfficial:true};
-    }catch(e){
-      console.warn("CERFA AcroForm fill failed, fallback to generated:",e);
-    }
-  }
+  // Build PDF avec champs + textes libres
+  const freeTextsRef=useRef(freeTexts);freeTextsRef.current=freeTexts;
+  const fieldsRef=useRef(fields);fieldsRef.current=fields;
+  const buildPdf=async()=>{
+    const pdfDoc=await PDFDocument.load(pdfBytes,{ignoreEncryption:true});
+    const form=pdfDoc.getForm();
+    Object.entries(fieldsRef.current).forEach(([name,val])=>{try{form.getTextField(name).setText(val||"");}catch{}});
+    const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const pdfPages=pdfDoc.getPages();
+    Object.entries(freeTextsRef.current).forEach(([pi,arr])=>{
+      const page=pdfPages[parseInt(pi)];if(!page)return;
+      const pgH=page.getHeight();
+      arr.forEach(t=>{
+        if(!t.text)return;
+        page.drawText(t.text,{x:t.x/scale,y:pgH-((t.y/scale)+(t.fontSize||11)),size:t.fontSize||11,font,color:rgb(0.05,0.05,0.3)});
+      });
+    });
+    return await pdfDoc.save();
+  };
 
-  // ── Fallback : generer le CERFA from scratch avec pdf-lib ──
-  const pdf=await PDFDocument.create();
-  const font=await pdf.embedFont(StandardFonts.Helvetica);
-  const fontB=await pdf.embedFont(StandardFonts.HelveticaBold);
-  const black=rgb(0,0,0);
-  const gray=rgb(0.3,0.3,0.3);
-  const orColor=rgb(0.91,0.31,0.1);
-  const W=595.28,H=841.89;
+  // Auto-save
+  const [autoSaveStatus,setAutoSaveStatus]=useState("");
+  const saveToServer=async(bytes)=>{
+    if(!dossierId)return;
+    try{
+      await fetch("/api/cerfa-save/"+encodeURIComponent(dossierId),{method:"POST",headers:{"Content-Type":"application/pdf",Authorization:"Bearer "+(localStorage.getItem("auth_token")||"")},body:bytes});
+      setAutoSaveStatus("✓ Sauvegardé");setTimeout(()=>setAutoSaveStatus(""),2000);
+    }catch(e){console.warn("Sauvegarde CERFA serveur échouée:",e);}
+  };
+  const saveTimer=useRef(null);
+  useEffect(()=>{
+    if(!dossierId)return;
+    if(saveTimer.current)clearTimeout(saveTimer.current);
+    saveTimer.current=setTimeout(async()=>{
+      setAutoSaveStatus("Sauvegarde...");
+      try{const bytes=await buildPdf();await saveToServer(bytes);}catch{}
+    },2000);
+    return()=>{if(saveTimer.current)clearTimeout(saveTimer.current);};
+  },[fields,freeTexts]);
 
-  // Page 1 : Informations demandeur + terrain
-  const p1=pdf.addPage([W,H]);
-  let y=H-50;
-  const hdr=(txt,pg)=>{pg.drawRectangle({x:30,y:y-2,width:W-60,height:22,color:rgb(0.95,0.95,0.92)});pg.drawText(txt,{x:38,y:y+3,font:fontB,size:11,color:orColor});y-=30;};
-  const row=(label,val,pg,indent=40)=>{pg.drawText(label,{x:indent,y,font:fontB,size:9,color:gray});pg.drawText(val||"",{x:indent+160,y,font,size:10,color:black});y-=18;};
-  const line=(pg)=>{pg.drawLine({start:{x:30,y},end:{x:W-30,y},thickness:0.5,color:rgb(0.85,0.85,0.82)});y-=8;};
+  const saveAndDownload=async()=>{
+    setSaving(true);
+    try{
+      const savedBytes=await buildPdf();await saveToServer(savedBytes);
+      const blob=new Blob([savedBytes],{type:"application/pdf"});
+      const url=URL.createObjectURL(blob);const a=document.createElement("a");
+      a.href=url;a.download=fileName;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+    }catch(e){console.error("Erreur sauvegarde CERFA:",e);}finally{setSaving(false);}
+  };
+  const handleClose=async()=>{try{const bytes=await buildPdf();await saveToServer(bytes);}catch{}onClose();};
 
-  // Titre
-  p1.drawText("DECLARATION PREALABLE",{x:(W-fontB.widthOfTextAtSize("DECLARATION PREALABLE",18))/2,y,font:fontB,size:18,color:orColor});
-  y-=14;
-  p1.drawText("(Article R.431-35 du code de l'urbanisme)",{x:(W-font.widthOfTextAtSize("(Article R.431-35 du code de l'urbanisme)",9))/2,y,font,size:9,color:gray});
-  y-=10;
-  p1.drawText("Formulaire CERFA n\u00b0 13703 — R11646",{x:(W-font.widthOfTextAtSize("Formulaire CERFA n\u00b0 13703 — R11646",9))/2,y,font,size:9,color:gray});
-  y-=30;
+  const pageData=pages[currentPage];
+  const pageFields=fieldMeta.filter(f=>f.pageIndex===currentPage);
+  const pageFree=freeTexts[currentPage]||[];
 
-  // 1. Identité
-  hdr("1. IDENTITE DU DEMANDEUR",p1);
-  row("Nom :",d.client_nom||"",p1);
-  row("Prenom :",d.client_prenom||"",p1);
-  row("Organisme :",d.client_org||"",p1);
-  if(d.representant)row("Representant :",d.representant,p1);
-  if(d.siret)row("SIRET :",d.siret,p1);
-  line(p1);
+  // Double-clic sur le PDF → ajouter un texte libre à cet endroit
+  const handleDblClick=e=>{
+    if(e.target.tagName==="INPUT")return;
+    const rect=e.currentTarget.getBoundingClientRect();
+    const x=e.clientX-rect.left;
+    const y=e.clientY-rect.top;
+    const id=Date.now()+"_"+Math.random().toString(36).slice(2,6);
+    setFreeTexts(prev=>({...prev,[currentPage]:[...(prev[currentPage]||[]),{id,x,y,text:"",fontSize:11}]}));
+    setEditingFree(id);
+  };
 
-  // 2. Coordonnées
-  hdr("2. COORDONNEES DU DEMANDEUR",p1);
-  row("Adresse :",d.address||"",p1);
-  row("Code postal :",d.postal_code||"",p1);
-  row("Ville :",d.ville||"",p1);
-  row("Telephone :",d.phone||"",p1);
-  row("Email :",d.email||"",p1);
-  line(p1);
-
-  // 3. Terrain
-  hdr("3. LOCALISATION DU TERRAIN",p1);
-  row("Adresse du terrain :",d.address||"",p1);
-  row("Commune :",d.ville||"",p1);
-  row("Code postal :",d.postal_code||"",p1);
-  row("Ref. cadastrales :",d.parcelle||"",p1);
-  row("N\u00b0 Dossier DP :",d.dp_number||"(a completer)",p1);
-  line(p1);
-
-  // 4. Mandataire
-  hdr("4. MANDATAIRE (le cas echeant)",p1);
-  row("Societe :","Eco Formalites",p1);
-  row("Adresse :","196 avenue Jean Lolive, 93500 Pantin",p1);
-  row("RCS :","921 468 641 (Bobigny)",p1);
-  row("Qualite :","Mandataire administratif",p1);
-  line(p1);
-
-  // 5. Description des travaux
-  hdr("5. COURTE DESCRIPTION DU PROJET",p1);
-  y-=4;
-  // Détailler chaque type de travaux
-  (d.works||[]).forEach((w,i)=>{
-    const desc=WORK_DESCRIPTIONS[w.type]||w.type;
-    const fmts=(w.formalites||[]).join(", ");
-    const kwc=w.kwc?(w.kwc==="Personnalise"?w.kwc_c:w.kwc):"";
-    p1.drawText((i+1)+". "+desc,{x:45,y,font:fontB,size:10,color:black});y-=16;
-    if(kwc){p1.drawText("   Puissance : "+kwc+" kWc",{x:55,y,font,size:9,color:gray});y-=14;}
-    if(fmts){p1.drawText("   Formalites : "+fmts,{x:55,y,font,size:9,color:gray});y-=14;}
-    y-=4;
-  });
-
-  // Page 2 si necessaire : infos complementaires
-  if(y<200||d.urbanisme_result){
-    const p2=pdf.addPage([W,H]);
-    y=H-50;
-
-    if(d.urbanisme_result){
-      const ur=d.urbanisme_result;
-      hdr("6. INFORMATIONS URBANISME",p2);
-      if(ur.mairie_nom)row("Mairie :",ur.mairie_nom,p2);
-      if(ur.mairie_adresse)row("Adresse mairie :",ur.mairie_adresse,p2);
-      if(ur.email_urbanisme)row("Email urbanisme :",ur.email_urbanisme,p2);
-      if(ur.plateforme_depot)row("Depot en ligne :",ur.plateforme_depot,p2);
-      line(p2);
-    }
-
-    // Signature
-    hdr("SIGNATURE DU DEMANDEUR",p2);
-    y-=6;
-    p2.drawText("Date : "+new Date().toLocaleDateString("fr-FR"),{x:40,y,font,size:10,color:black});y-=16;
-    p2.drawText("Signature :",{x:40,y,font,size:10,color:black});y-=60;
-    line(p2);
-
-    // Footer
-    p2.drawText("Genere automatiquement par Eco-Formalites CRM",{x:40,y:40,font,size:8,color:gray});
-    p2.drawText("Ce document est a completer et signer avant depot",{x:40,y:28,font,size:8,color:gray});
-  }
-
-  // Footer page 1
-  p1.drawText("Genere automatiquement par Eco-Formalites CRM — "+new Date().toLocaleDateString("fr-FR"),{x:40,y:40,font,size:8,color:gray});
-  p1.drawText("Ce document est a completer et signer avant depot en mairie",{x:40,y:28,font,size:8,color:gray});
-
-  return{bytes:await pdf.save(),isOfficial:false};
+  return <div className="ov" style={{zIndex:9999}} onClick={e=>e.target===e.currentTarget&&handleClose()}>
+    <div style={{background:"var(--bg2)",borderRadius:"var(--rl)",width:"95vw",maxWidth:1100,height:"92vh",display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"var(--shl)"}} onClick={e=>e.stopPropagation()}>
+      {/* Header */}
+      <div style={{padding:"12px 20px",borderBottom:"1.5px solid var(--bd)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <Ic n="edit" s={16} c="var(--or)"/>
+          <span style={{fontWeight:800,fontSize:15}}>Éditeur CERFA</span>
+          <span style={{fontSize:11,color:"var(--tx4)"}}>Cases bleues = clic pour écrire · Double-clic = texte libre</span>
+          {autoSaveStatus&&<span style={{fontSize:11,fontWeight:600,color:autoSaveStatus.startsWith("✓")?"var(--gr)":"var(--tx4)",marginLeft:6}}>{autoSaveStatus}</span>}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button className="btn btn-p btn-sm" onClick={saveAndDownload} disabled={saving} style={{fontWeight:700}}>
+            {saving?<><Ic n="prog" s={11}/> Sauvegarde...</>:<><Ic n="dl" s={11}/> Télécharger le PDF</>}
+          </button>
+          <button className="bic" onClick={handleClose}><Ic n="x"/></button>
+        </div>
+      </div>
+      {/* Pagination */}
+      <div style={{padding:"8px 20px",borderBottom:"1px solid var(--bd)",display:"flex",alignItems:"center",gap:8,flexShrink:0,background:"var(--bg3)"}}>
+        <button className="btn btn-s btn-sm" disabled={currentPage===0} onClick={()=>setCurrentPage(p=>p-1)}>← Précédent</button>
+        <span style={{fontSize:12,fontWeight:700,color:"var(--tx2)"}}>Page {currentPage+1} / {pages.length||"..."}</span>
+        <button className="btn btn-s btn-sm" disabled={currentPage>=pages.length-1} onClick={()=>setCurrentPage(p=>p+1)}>Suivant →</button>
+        <div style={{flex:1}}/>
+        <span style={{fontSize:11,color:"var(--tx4)"}}>{pageFields.length} champ{pageFields.length!==1?"s":""} · {pageFree.length} texte{pageFree.length!==1?"s":""} libre{pageFree.length!==1?"s":""}</span>
+      </div>
+      {/* PDF page with overlay fields */}
+      <div ref={containerRef} style={{flex:1,overflow:"auto",background:"#808080",display:"flex",justifyContent:"center",padding:20}}>
+        {pageData?<div style={{position:"relative",width:pageData.width,height:pageData.height,flexShrink:0}} onDoubleClick={handleDblClick}>
+          <img src={pageData.dataUrl} style={{width:pageData.width,height:pageData.height,display:"block",pointerEvents:"none"}} draggable={false}/>
+          {/* Champs AcroForm — cases bleues éditables au clic */}
+          {pageFields.map((f,i)=>{
+            const cssX=f.x*scale;
+            const cssY=pageData.height-(f.y+f.h)*scale;
+            const cssW=f.w*scale;
+            const cssH=f.h*scale;
+            const hasValue=!!(fields[f.name]);
+            return <input key={f.name+"-"+i}
+              type="text"
+              value={fields[f.name]||""}
+              onChange={e=>setFields(prev=>({...prev,[f.name]:e.target.value}))}
+              maxLength={f.maxLen>0?f.maxLen:undefined}
+              title={f.name}
+              style={{
+                position:"absolute",left:cssX,top:cssY,width:cssW,height:cssH,
+                background:hasValue?"rgba(180,210,255,0.3)":"rgba(180,210,255,0.15)",
+                border:"1.5px solid rgba(74,122,238,0.4)",
+                borderRadius:2,
+                fontSize:Math.min(cssH*0.75,14),
+                fontFamily:"var(--ff)",
+                color:"#1a1a60",
+                padding:"0 3px",
+                outline:"none",
+                boxSizing:"border-box",
+                cursor:"text",
+              }}
+              onFocus={e=>{e.target.style.borderColor="#4a7aee";e.target.style.background="rgba(180,210,255,0.45)";e.target.style.boxShadow="0 0 0 2px rgba(74,122,238,0.3)";}}
+              onBlur={e=>{e.target.style.borderColor="rgba(74,122,238,0.4)";e.target.style.background=e.target.value?"rgba(180,210,255,0.3)":"rgba(180,210,255,0.15)";e.target.style.boxShadow="none";}}
+            />;
+          })}
+          {/* Textes libres — double-clic pour ajouter */}
+          {pageFree.map(t=><div key={t.id} style={{position:"absolute",left:t.x,top:t.y-2,display:"flex",alignItems:"center",gap:2,zIndex:10}}>
+            <input type="text" value={t.text} autoFocus={editingFree===t.id}
+              onChange={e=>{const v=e.target.value;setFreeTexts(prev=>({...prev,[currentPage]:(prev[currentPage]||[]).map(ft=>ft.id===t.id?{...ft,text:v}:ft)}));}}
+              placeholder="Tapez ici..."
+              style={{
+                background:t.text?"rgba(255,240,200,0.4)":"rgba(255,240,200,0.6)",
+                border:"1.5px dashed #c08020",borderRadius:3,
+                fontSize:t.fontSize*scale/1.5||11,fontFamily:"var(--ff)",color:"#1a1a60",
+                padding:"2px 4px",outline:"none",minWidth:100,
+                width:Math.max(100,(t.text||"").length*8+30),boxSizing:"border-box",
+              }}
+              onFocus={()=>setEditingFree(t.id)} onBlur={()=>setEditingFree(null)}
+            />
+            <button onClick={()=>setFreeTexts(prev=>({...prev,[currentPage]:(prev[currentPage]||[]).filter(ft=>ft.id!==t.id)}))}
+              style={{background:"#e05038",color:"#fff",border:"none",borderRadius:"50%",width:18,height:18,fontSize:11,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",padding:0,flexShrink:0}}
+              title="Supprimer ce texte">×</button>
+          </div>)}
+        </div>:<div style={{color:"#fff",fontSize:14,padding:40}}>Chargement du PDF...</div>}
+      </div>
+    </div>
+  </div>;
 }
 
 // ── Generation PDF Attestation de Mission Administrative ──
@@ -1129,7 +1270,7 @@ function DossierForm({initial,onSave,onClose,currentUser,clientsOrg,onAddOrg}){
   const set=(k,v)=>setF(x=>({...x,[k]:v}));
   const setW=(i,k,v)=>{const w=[...f.works];w[i]={...w[i],[k]:v};set("works",w);};
   const togFmt=(i,fm)=>{const w=[...f.works];const cur=w[i].formalites||[];w[i]={...w[i],formalites:cur.includes(fm)?cur.filter(x=>x!==fm):[...cur,fm]};set("works",w);};
-  const needKwc=t=>["Panneaux Solaires","Systeme Solaire Combine"].includes(t);
+  const needKwc=t=>["Panneaux Solaires 500","Panneaux Solaires 375","Systeme Solaire Combine"].includes(t);
   const scanPdf=async(file)=>{setSc(file.type?.startsWith("image/")?"ocr":true);setDpR(null);const dp=await extractDP(file);setSc(false);if(dp){setDpR(dp);set("dp_number",dp);}else setDpR("none");};
   const scanClientDoc=async(file)=>{
     const isPdf=file.type?.includes("pdf");const isImg=file.type?.startsWith("image/");
@@ -1393,9 +1534,31 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
     }catch(err){toast("Erreur upload : "+err.message,"e");}
     finally{setFreeUploading(false);}
   };
+  const [cerfaLoading,setCerfaLoading]=useState(false);
+  const [cerfaEditor,setCerfaEditor]=useState(null);
+  const cerfaFileName="CERFA_DP_"+((d.client||"dossier").replace(/\s+/g,"_"))+".pdf";
+  const downloadCerfa=async()=>{
+    setCerfaLoading(true);
+    try{
+      // Charger la version sauvegardée si elle existe
+      let savedBytes=null;
+      try{
+        const r=await fetch("/api/cerfa-save/"+encodeURIComponent(d.id),{headers:{Authorization:"Bearer "+(localStorage.getItem("auth_token")||"")}});
+        if(r.ok){const ct=r.headers.get("content-type")||"";if(ct.includes("pdf"))savedBytes=new Uint8Array(await r.arrayBuffer());}
+      }catch{}
+      if(savedBytes&&savedBytes.byteLength>10000){
+        setCerfaEditor(savedBytes);
+      }else{
+        const result=await generateCerfaPDF(d,currentUser);
+        setCerfaEditor(result.bytes);
+      }
+    }catch(err){toast("Erreur génération CERFA : "+err.message,"e");console.error(err);}
+    finally{setCerfaLoading(false);}
+  };
   const tabs=["info","documents","avancement","commentaires",...(isSA?["paiement"]:[])];
   const tabLabel={info:"Informations",avancement:"Avancement",documents:"Documents",commentaires:"Commentaires",paiement:"Paiement"};
   return <div className="ov" onClick={e=>e.target===e.currentTarget&&onClose()}>
+    {cerfaEditor&&<CerfaEditor pdfBytes={cerfaEditor} fileName={cerfaFileName} dossierId={d.id} onClose={()=>setCerfaEditor(null)}/>}
     {previewDoc&&<DocPreview doc={previewDoc} onClose={()=>setPreviewDoc(null)}/>}
     {/* Popup confirmation attribution */}
     {assignConfirm&&<div className="ov" style={{zIndex:10001}} onClick={()=>setAssignConfirm(false)}>
@@ -1426,6 +1589,9 @@ function DossierDetail({dossier,onClose,onUpdate,currentUser,addNotif,toast}){
             {isUnassigned?"☝ S'attribuer":"☝ Me l'attribuer"}
           </button>}
           {isAssignedToMe&&<span style={{background:"#ecfdf5",border:"1.5px solid #a7f3d0",color:"#059669",padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700}}>✓ Mon dossier</span>}
+          <button className="btn btn-sm" style={{background:"var(--or)",color:"#fff",border:"none",fontWeight:700}} onClick={downloadCerfa} disabled={cerfaLoading} title="Télécharger le CERFA pré-rempli">
+            {cerfaLoading?<><Ic n="prog" s={11}/> Génération...</>:<><Ic n="dl" s={11}/> CERFA</>}
+          </button>
           <button className="btn btn-s btn-sm" onClick={()=>setEditing(true)}><Ic n="edit" s={11}/>Modifier</button>
           <button className="btn btn-s btn-sm" onClick={()=>openChatForDossier(d)} title="Ouvrir le chat pour ce dossier"><Ic n="msg" s={11}/>Chat</button>
           <button className="bic" onClick={onClose}><Ic n="x"/></button>
@@ -2197,9 +2363,17 @@ function Dashboard({dossiers}){
   };
 
   return <div>
-    {/* Filtres temporels */}
-    <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
-      {periodBtns.map(p=><button key={p.k} className={"btn "+(period===p.k?"btn-p":"btn-s")} style={{fontSize:12,padding:"7px 16px",borderRadius:20}} onClick={()=>setPeriod(p.k)}>{p.l}</button>)}
+    {/* Date du jour + Filtres temporels */}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:10}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,background:"var(--bg2)",border:"1px solid var(--bd)",borderRadius:12,padding:"8px 16px"}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span style={{fontSize:15,fontWeight:700,color:"var(--tx1)",letterSpacing:"-.01em"}}>{todayDDMMYYYY()}</span>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+        {periodBtns.map(p=><button key={p.k} className={"btn "+(period===p.k?"btn-p":"btn-s")} style={{fontSize:12,padding:"7px 16px",borderRadius:20}} onClick={()=>setPeriod(p.k)}>{p.l}</button>)}
+      </div>
     </div>
 
     {/* KPIs */}
