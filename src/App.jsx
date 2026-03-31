@@ -21,7 +21,7 @@ const FORMALITES = ["Demande Prealable","Raccordement","Consuel","Recuperation d
 const RACC_STATUSES = ["Complet","Incomplet","En cours d instruction","Subvention accordee","En attente de paiement","Pas eligible","Mise en service programmée","Mise en service","Réenvoi"];
 const RACC_STATUSES_WITH_DATE = ["Mise en service programmée","Mise en service","Réenvoi"];
 const DP_STATUSES = ["Incomplet","Récépissé reçu","Réenvoi"];
-const CONS_STATUSES = ["Avis de visite","À envoyer au CONSUEL","Envoyé au CONSUEL","Positif"];
+const CONS_STATUSES = ["Avis de visite","À envoyer au Consuel","Envoyé au Consuel","Positif"];
 
 const ALL_STATUSES = [
   {key:"en_attente",label:"En attente",color:"#d97706",bg:"#fffbeb"},
@@ -32,7 +32,7 @@ const ALL_STATUSES = [
   {key:"attente_recepisse",label:"Attente Recepisse Mairie",color:"#7c3aed",bg:"#f5f3ff"},
   {key:"attente_racco",label:"Attente Raccordement",color:"#0891b2",bg:"#ecfeff"},
   {key:"batiment_france",label:"Batiment de France",color:"#92400e",bg:"#fef3c7"},
-  {key:"consuel_vise",label:"CONSUEL Vise",color:"#059669",bg:"#ecfdf5"},
+  {key:"consuel_vise",label:"Consuel Vise",color:"#059669",bg:"#ecfdf5"},
   {key:"incomplet_mairie",label:"Incomplet Mairie",color:"#dc2626",bg:"#fef2f2"},
   {key:"manque_document",label:"Manque Document",color:"#dc2626",bg:"#fef2f2"},
   {key:"mise_en_service",label:"Mise en Service",color:"#059669",bg:"#ecfdf5"},
@@ -456,7 +456,8 @@ async function generateCerfaPDF(dossier,currentUser){
 function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
   const containerRef=useRef(null);
   const [pages,setPages]=useState([]);
-  const [fields,setFields]=useState({});
+  const [fields,setFields]=useState({});   // text fields
+  const [checks,setChecks]=useState({});   // checkbox fields
   const [currentPage,setCurrentPage]=useState(0);
   const [saving,setSaving]=useState(false);
   const [scale]=useState(1.5);
@@ -464,7 +465,7 @@ function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
   const [freeTexts,setFreeTexts]=useState({});
   const [editingFree,setEditingFree]=useState(null);
 
-  // Charger le PDF et extraire les champs AcroForm + rendre les pages
+  // Charger le PDF et extraire les champs AcroForm (texte + cases) + rendre les pages
   useEffect(()=>{
     if(!pdfBytes)return;
     let cancelled=false;
@@ -473,28 +474,35 @@ function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
       const form=pdfDoc.getForm();
       const allFields=form.getFields();
       const pdfPages=pdfDoc.getPages();
-      // Map page ref string → index (fix: utiliser toString pour comparaison fiable)
       const refToIdx=new Map();
       pdfPages.forEach((pg,i)=>refToIdx.set(pg.ref.toString(),i));
       const meta=[];
       const vals={};
+      const checkVals={};
       allFields.forEach(f=>{
         const name=f.getName();
         const isText=f.constructor.name==="PDFTextField";
-        if(!isText)return;
-        try{vals[name]=form.getTextField(name).getText()||"";}catch{vals[name]="";}
+        const isCB=f.constructor.name==="PDFCheckBox";
+        if(!isText&&!isCB)return;
+        if(isText){
+          try{vals[name]=form.getTextField(name).getText()||"";}catch{vals[name]="";}
+        }else{
+          try{checkVals[name]=form.getCheckBox(name).isChecked();}catch{checkVals[name]=false;}
+        }
         f.acroField.getWidgets().forEach(w=>{
           const rect=w.getRectangle();
           const pi=refToIdx.get(w.P().toString());
           if(pi!==undefined){
-            let maxLen=0;try{maxLen=form.getTextField(name).getMaxLength();}catch{}
-            meta.push({name,pageIndex:pi,x:rect.x,y:rect.y,w:rect.width,h:rect.height,maxLen});
+            let maxLen=0;
+            if(isText)try{maxLen=form.getTextField(name).getMaxLength();}catch{}
+            meta.push({name,type:isText?"text":"checkbox",pageIndex:pi,x:rect.x,y:rect.y,w:rect.width,h:rect.height,maxLen});
           }
         });
       });
       if(cancelled)return;
       setFieldMeta(meta);
       setFields(vals);
+      setChecks(checkVals);
       // Rendre les pages avec pdf.js
       const loadTask=pdfjsLib.getDocument({data:new Uint8Array(pdfBytes)});
       const pdf=await loadTask.promise;
@@ -512,21 +520,27 @@ function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
     return()=>{cancelled=true;};
   },[pdfBytes,scale]);
 
-  // Build PDF avec champs + textes libres
+  // Build PDF avec champs texte + cases + textes libres
   const freeTextsRef=useRef(freeTexts);freeTextsRef.current=freeTexts;
   const fieldsRef=useRef(fields);fieldsRef.current=fields;
+  const checksRef=useRef(checks);checksRef.current=checks;
   const buildPdf=async()=>{
     const pdfDoc=await PDFDocument.load(pdfBytes,{ignoreEncryption:true});
     const form=pdfDoc.getForm();
-    Object.entries(fieldsRef.current).forEach(([name,val])=>{try{form.getTextField(name).setText(val||"");}catch{}});
     const font=await pdfDoc.embedFont(StandardFonts.Helvetica);
+    Object.entries(fieldsRef.current).forEach(([name,val])=>{try{form.getTextField(name).setText(val||"");}catch{}});
+    Object.entries(checksRef.current).forEach(([name,checked])=>{
+      try{if(checked)form.getCheckBox(name).check();else form.getCheckBox(name).uncheck();}catch{}
+    });
+    // Régénère les appearance streams pour que les valeurs s'affichent dans tous les lecteurs PDF
+    try{form.updateFieldAppearances(font);}catch{}
     const pdfPages=pdfDoc.getPages();
     Object.entries(freeTextsRef.current).forEach(([pi,arr])=>{
       const page=pdfPages[parseInt(pi)];if(!page)return;
       const pgH=page.getHeight();
       arr.forEach(t=>{
         if(!t.text)return;
-        page.drawText(t.text,{x:t.x/scale,y:pgH-((t.y/scale)+(t.fontSize||11)),size:t.fontSize||11,font,color:rgb(0.05,0.05,0.3)});
+        page.drawText(t.text,{x:t.x/scale,y:pgH-((t.y/scale)+(t.fontSize||11)),size:t.fontSize||11,font,color:rgb(0,0,0)});
       });
     });
     return await pdfDoc.save();
@@ -550,7 +564,7 @@ function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
       try{const bytes=await buildPdf();await saveToServer(bytes);}catch{}
     },2000);
     return()=>{if(saveTimer.current)clearTimeout(saveTimer.current);};
-  },[fields,freeTexts]);
+  },[fields,checks,freeTexts]);
 
   const saveAndDownload=async()=>{
     setSaving(true);
@@ -607,12 +621,28 @@ function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
       <div ref={containerRef} style={{flex:1,overflow:"auto",background:"#808080",display:"flex",justifyContent:"center",padding:20}}>
         {pageData?<div style={{position:"relative",width:pageData.width,height:pageData.height,flexShrink:0}} onDoubleClick={handleDblClick}>
           <img src={pageData.dataUrl} style={{width:pageData.width,height:pageData.height,display:"block",pointerEvents:"none"}} draggable={false}/>
-          {/* Champs AcroForm — cases bleues éditables au clic */}
+          {/* Champs AcroForm — texte + cases à cocher éditables au clic */}
           {pageFields.map((f,i)=>{
             const cssX=f.x*scale;
             const cssY=pageData.height-(f.y+f.h)*scale;
             const cssW=f.w*scale;
             const cssH=f.h*scale;
+            if(f.type==="checkbox"){
+              const isChecked=!!checks[f.name];
+              return <div key={f.name+"-"+i} title={f.name}
+                onClick={()=>setChecks(prev=>({...prev,[f.name]:!prev[f.name]}))}
+                style={{
+                  position:"absolute",left:cssX,top:cssY,width:cssW,height:cssH,
+                  background:isChecked?"rgba(74,122,238,0.25)":"rgba(180,210,255,0.08)",
+                  border:"1.5px solid rgba(74,122,238,0.5)",
+                  borderRadius:2,cursor:"pointer",
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  userSelect:"none",
+                }}
+              >
+                {isChecked&&<span style={{color:"#000000",fontWeight:900,fontSize:Math.min(cssH*0.85,16),lineHeight:1}}>✓</span>}
+              </div>;
+            }
             const hasValue=!!(fields[f.name]);
             return <input key={f.name+"-"+i}
               type="text"
@@ -620,6 +650,7 @@ function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
               onChange={e=>setFields(prev=>({...prev,[f.name]:e.target.value}))}
               maxLength={f.maxLen>0?f.maxLen:undefined}
               title={f.name}
+              autoComplete="off"
               style={{
                 position:"absolute",left:cssX,top:cssY,width:cssW,height:cssH,
                 background:hasValue?"rgba(180,210,255,0.3)":"rgba(180,210,255,0.15)",
@@ -627,7 +658,7 @@ function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
                 borderRadius:2,
                 fontSize:Math.min(cssH*0.75,14),
                 fontFamily:"var(--ff)",
-                color:"#1a1a60",
+                color:"#000000",
                 padding:"0 3px",
                 outline:"none",
                 boxSizing:"border-box",
@@ -645,7 +676,7 @@ function CerfaEditor({pdfBytes,fileName,dossierId,onClose}){
               style={{
                 background:t.text?"rgba(255,240,200,0.4)":"rgba(255,240,200,0.6)",
                 border:"1.5px dashed #c08020",borderRadius:3,
-                fontSize:t.fontSize*scale/1.5||11,fontFamily:"var(--ff)",color:"#1a1a60",
+                fontSize:t.fontSize*scale/1.5||11,fontFamily:"var(--ff)",color:"#000000",
                 padding:"2px 4px",outline:"none",minWidth:100,
                 width:Math.max(100,(t.text||"").length*8+30),boxSizing:"border-box",
               }}
@@ -1106,7 +1137,7 @@ function Avancement({d,save,toast}){
   const steps=[
     {key:"dp",label:"Demande Prealable",sentKey:"dp_envoi",noteKey:"dp_note",color:"#6366f1"},
     {key:"racc",label:"Raccordement",sentKey:"racc_date",noteKey:"racc_note",color:"#E8501A"},
-    {key:"cons",label:"CONSUEL",sentKey:"cons_date",noteKey:"cons_note",color:"#f59e0b"},
+    {key:"cons",label:"Consuel",sentKey:"cons_date",noteKey:"cons_note",color:"#f59e0b"},
     {key:"tva",label:"Recuperation TVA",sentKey:"tva_date",noteKey:"tva_note",color:"#059669"},
   ];
 
@@ -1116,11 +1147,11 @@ function Avancement({d,save,toast}){
     "Incomplet":{bg:"#fffbeb",border:"#fcd34d",tx:"#b45309"},
     "Réenvoi":{bg:"#fef2f2",border:"#fca5a5",tx:"#dc2626"},
   };
-  // Couleurs badges statut CONSUEL
+  // Couleurs badges statut Consuel
   const consStatusColor={
     "Positif":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},
-    "Envoyé au CONSUEL":{bg:"#EEF3FD",border:"#bfdbfe",tx:"#1A4A8A"},
-    "À envoyer au CONSUEL":{bg:"#fffbeb",border:"#fcd34d",tx:"#b45309"},
+    "Envoyé au Consuel":{bg:"#EEF3FD",border:"#bfdbfe",tx:"#1A4A8A"},
+    "À envoyer au Consuel":{bg:"#fffbeb",border:"#fcd34d",tx:"#b45309"},
     "Avis de visite":{bg:"#f5f3ff",border:"#c4b5fd",tx:"#7c3aed"},
   };
   // Couleurs badges statut Raccordement
@@ -1167,13 +1198,13 @@ function Avancement({d,save,toast}){
             <option value="">-- Statut DP --</option>
             {DP_STATUSES.map(s=><option key={s}>{s}</option>)}
           </select>}
-          {/* Dropdown statut CONSUEL */}
+          {/* Dropdown statut Consuel */}
           {isCons&&<select value={consSt} onChange={e=>upd("cons_status",e.target.value)}
             style={{width:"auto",fontSize:11,padding:"3px 7px",fontWeight:600,
               background:consStColor?consStColor.bg:"var(--bg2)",
               borderColor:consStColor?consStColor.border:"var(--bd)",
               color:consStColor?consStColor.tx:"var(--tx3)"}}>
-            <option value="">-- Statut CONSUEL --</option>
+            <option value="">-- Statut Consuel --</option>
             {CONS_STATUSES.map(s=><option key={s}>{s}</option>)}
           </select>}
           {/* Dropdown statut Raccordement */}
@@ -1972,8 +2003,8 @@ function dossierToRow(d){
     "Raccordement date":d.avancement?.racc_date||"",
     "Raccordement statut":d.avancement?.racc_status||"",
     "Raccordement note":d.avancement?.racc_note||"",
-    "CONSUEL date":d.avancement?.cons_date||"",
-    "CONSUEL note":d.avancement?.cons_note||"",
+    "Consuel date":d.avancement?.cons_date||"",
+    "Consuel note":d.avancement?.cons_note||"",
     "TVA date":d.avancement?.tva_date||"",
     "TVA note":d.avancement?.tva_note||"",
     "Nb commentaires":(d.comments||[]).length,
@@ -2012,8 +2043,8 @@ function rowToDossier(row){
       racc_date:row["Raccordement date"]||"",
       racc_status:row["Raccordement statut"]||"",
       racc_note:row["Raccordement note"]||"",
-      cons_checked:!!(row["CONSUEL date"]),
-      cons_date:row["CONSUEL date"]||"",cons_note:row["CONSUEL note"]||"",
+      cons_checked:!!(row["Consuel date"]),
+      cons_date:row["Consuel date"]||"",cons_note:row["Consuel note"]||"",
       tva_checked:!!(row["TVA date"]),
       tva_date:row["TVA date"]||"",tva_note:row["TVA note"]||"",
     },
@@ -2134,7 +2165,7 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
     const cs=d.avancement?.cons_status||"";
     const cd=d.avancement?.cons_date||"";
     if(!cs&&!cd)return <span style={{color:"var(--tx4)",fontSize:11}}>—</span>;
-    const consColor={"Positif":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},"Envoyé au CONSUEL":{bg:"#EEF3FD",border:"#bfdbfe",tx:"#1A4A8A"}};
+    const consColor={"Positif":{bg:"#ecfdf5",border:"#a7f3d0",tx:"#059669"},"Envoyé au Consuel":{bg:"#EEF3FD",border:"#bfdbfe",tx:"#1A4A8A"}};
     const c=consColor[cs]||{bg:"var(--gr-l)",border:"#a7f3d0",tx:"var(--gr)"};
     return <div style={{display:"flex",flexDirection:"column",gap:2}}>
       {cs&&<span style={{background:c.bg,color:c.tx,fontSize:10,fontWeight:700,padding:"2px 7px",borderRadius:4,border:"1px solid "+c.border}}>{cs}</span>}
@@ -2222,7 +2253,7 @@ function Dossiers({dossiers,setDossiers,currentUser,toast,addNotif,globalQ,globa
           <thead><tr>
             <th>Date</th><th>Client</th><th>Travaux</th><th>Adresse</th><th>Statut</th>
             {isSA&&<th>Responsable</th>}
-            <th>Raccordement</th><th>CONSUEL</th><th>Recepisse</th>
+            <th>Raccordement</th><th>Consuel</th><th>Recepisse</th>
             {isSA&&<th>Paye</th>}
             <th></th>
           </tr></thead>
@@ -3125,7 +3156,7 @@ export default function App(){
         {/* Search — prominent at top (hidden for partners) */}
         {!isPartner&&<div className="sb-srch">
           <span className="sb-srch-ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-          <input value={globalQ} onChange={e=>{setGlobalQ(e.target.value);if(e.target.value&&page!=="dossiers")setPage("dossiers");}} placeholder="Nom, CP, adresse, N° DP..."/>
+          <input autoComplete="nope" name="search-sidebar" value={globalQ} onChange={e=>{setGlobalQ(e.target.value);if(e.target.value&&page!=="dossiers")setPage("dossiers");}} placeholder="Nom, CP, adresse, N° DP..."/>
         </div>}
         <div className="sb-nav">
           <div className="nvsec">Navigation</div>

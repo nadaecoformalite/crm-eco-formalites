@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
-  getEmailTemplates, getEmailTemplate,
+  getEmailTemplates,
   createEmailTemplate, updateEmailTemplate, deleteEmailTemplate,
   previewEmail, sendEmail, scheduleEmail,
-  getEmailQueue, cancelQueuedEmail,
+  getEmailQueue, cancelQueuedEmail, updateQueuedEmail,
   getEmailLog,
 } from "./api.js";
 
@@ -88,9 +88,10 @@ function Modal({ title, onClose, children, maxWidth = 700 }) {
 
 // ── Compose / Send modal ──────────────────────────────────────────────────────
 
-function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
+function ComposeModal({ templates, dossiers = [], onClose, onSent, initialTemplateId = '' }) {
   const [tab, setTab] = useState('template'); // 'template' | 'manual'
-  const [templateId, setTemplateId] = useState('');
+  const [editMode, setEditMode] = useState('visual'); // 'visual' | 'html'
+  const [templateId, setTemplateId] = useState(String(initialTemplateId));
   const [dossierId, setDossierId] = useState('');
   const [dossierSearch, setDossierSearch] = useState('');
   const [dossierDropOpen, setDossierDropOpen] = useState(false);
@@ -98,20 +99,16 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
   const [toName, setToName] = useState('');
   const [subject, setSubject] = useState('');
   const [bodyHtml, setBodyHtml] = useState('');
-  const [bodyText, setBodyText] = useState('');
   const [extraVars, setExtraVars] = useState('');
+  const visualRef = useRef(null);
   const [schedule, setSchedule] = useState(false);
   const [scheduledAt, setScheduledAt] = useState('');
+  const [attachments, setAttachments] = useState([]);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  // Auto-fill recipient from dossier
-  useEffect(() => {
-    if (!dossierId) return;
-    const d = dossiers.find(x => x.id === dossierId);
-    if (d) { setTo(d.email || ''); setToName(d.client || ''); }
-  }, [dossierId, dossiers]);
+  // Le dossier fournit uniquement les variables (DP, client...) — pas le destinataire
 
   const dossierQ = dossierSearch.toLowerCase();
   const filteredDossiers = (dossiers || []).filter(dd => {
@@ -129,24 +126,49 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
   const clearDossier = () => {
     setDossierId('');
     setDossierSearch('');
-    setTo('');
-    setToName('');
   };
 
   const parseExtraVars = () => {
     try { return extraVars ? JSON.parse(extraVars) : {}; } catch { return {}; }
   };
 
-  const handlePreview = async () => {
-    if (!templateId) return;
+  // Texte brut → HTML (si pas de balises détectées)
+  const normalizeToHtml = (text) => {
+    if (!text) return '';
+    if (/<[a-z][\s\S]*>/i.test(text)) return text;
+    return text.split(/\n\n+/).map(p => `<p style="margin:0 0 12px">${p.replace(/\n/g, '<br>')}</p>`).join('');
+  };
+
+  // bodyHtmlRef permet au callback ref de lire la valeur courante sans en dépendre (évite remontage à chaque frappe)
+  const bodyHtmlRef = useRef(bodyHtml);
+  bodyHtmlRef.current = bodyHtml;
+
+  const setVisualRef = useCallback(el => {
+    visualRef.current = el;
+    if (el) el.innerHTML = bodyHtmlRef.current; // injecte le contenu dès le montage du div
+  }, []);
+
+  // Auto-preview en écriture libre (temps réel)
+  useEffect(() => {
+    if (tab !== 'manual') return;
+    if (!bodyHtml && !subject) { setPreview(null); return; }
+    setPreview({ subject: subject || '(sans sujet)', body_html: normalizeToHtml(bodyHtml) });
+  }, [tab, bodyHtml, subject]);
+
+  const handlePreview = useCallback(async (tid, did) => {
+    const id = tid !== undefined ? tid : templateId;
+    if (!id) { setPreview(null); return; }
     setPreviewLoading(true);
     try {
-      const data = await previewEmail({ template_id: Number(templateId), dossier_id: dossierId || undefined, variables: parseExtraVars() });
+      const data = await previewEmail({ template_id: Number(id), dossier_id: (did !== undefined ? did : dossierId) || undefined, variables: parseExtraVars() });
       setPreview(data);
     } catch (e) {
-      alert('Erreur prévisualisation : ' + e.message);
+      // silencieux en auto-preview
     } finally { setPreviewLoading(false); }
-  };
+  }, [templateId, dossierId, extraVars]);
+
+  // Auto-preview dès qu'on change de template
+  useEffect(() => { handlePreview(templateId, dossierId); }, [templateId, dossierId]);
 
   const handleSend = async () => {
     if (!to) return alert('Destinataire requis');
@@ -157,9 +179,9 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
         template_id: tab === 'template' && templateId ? Number(templateId) : undefined,
         dossier_id: dossierId || undefined,
         subject: tab === 'manual' ? subject : undefined,
-        body_html: tab === 'manual' ? bodyHtml : undefined,
-        body_text: tab === 'manual' ? bodyText : undefined,
+        body_html: tab === 'manual' ? normalizeToHtml(bodyHtml) : undefined,
         variables: parseExtraVars(),
+        attachments,
       };
       if (schedule && scheduledAt) {
         await scheduleEmail({ ...payload, scheduled_at: new Date(scheduledAt).toISOString() });
@@ -176,165 +198,239 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent }) {
 
   const tplObj = templates.find(t => String(t.id) === String(templateId));
 
+  // Layout : overlay plein écran → deux colonnes côte à côte
   return (
-    <Modal title="Composer un email" onClose={onClose} maxWidth={760}>
-      <div className="mbdy" style={{ display:'flex', flexDirection:'column', gap:16 }}>
+    <div className="ov" onClick={e => e.target === e.currentTarget && onClose()}
+      style={{ alignItems:'center', justifyContent:'center', display:'flex', padding:'20px 16px' }}>
+      <div style={{ display:'flex', gap:16, alignItems:'stretch', width:'100%', maxWidth:1200, maxHeight:'92vh' }}
+        onClick={e => e.stopPropagation()}>
 
-        {/* Tabs */}
-        <div className="tabs" style={{ marginBottom:4 }}>
-          {[['template','Depuis un template'],['manual','Écriture libre']].map(([k,l]) => (
-            <button key={k} className={`tab${tab===k?' act':''}`} onClick={() => setTab(k)}>{l}</button>
-          ))}
-        </div>
+        {/* ── Colonne gauche : formulaire ── */}
+        <div style={{ flex:'0 0 500px', background:'var(--bg2)', borderRadius:'var(--rl)',
+          boxShadow:'var(--shl)', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+          {/* Header */}
+          <div className="mhdr">
+            <span style={{ fontWeight:800, fontSize:15, color:'var(--or)' }}>
+              {tplObj ? `Composer — ${tplObj.name}` : 'Composer un email'}
+            </span>
+            <button className="bic" onClick={onClose}><Ic.X /></button>
+          </div>
+          {/* Body scrollable */}
+          <div className="mbdy" style={{ display:'flex', flexDirection:'column', gap:14, flex:1, overflowY:'auto' }}>
+            <div className="tabs" style={{ marginBottom:4 }}>
+              {[['template','Depuis un template'],['manual','Écriture libre']].map(([k,l]) => (
+                <button key={k} className={`tab${tab===k?' act':''}`} onClick={() => {
+                  if (k === 'manual' && tab === 'template' && preview) {
+                    // Toujours injecter le contenu du template rendu (design + texte)
+                    setBodyHtml(preview.body_html || '');
+                    setSubject(preview.subject || '');
+                  }
+                  setTab(k);
+                }}>{l}</button>
+              ))}
+            </div>
 
-        {/* Dossier search + Destinataire */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-          <div className="fg" style={{ position:'relative' }}>
-            <label className="lbl" style={{ color:'var(--or)' }}>Dossier — N° DP, client, partenaire</label>
-            <div style={{ display:'flex', alignItems:'center', gap:6, border:'1.5px solid var(--bd)',
-              borderRadius:'var(--r)', padding:'6px 10px', background:'var(--bg3)', transition:'border-color 0.15s' }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-              </svg>
-              <input value={dossierSearch}
-                onChange={e => { setDossierSearch(e.target.value); setDossierId(''); setDossierDropOpen(true); }}
-                onFocus={() => setDossierDropOpen(true)}
-                onBlur={() => setTimeout(() => setDossierDropOpen(false), 150)}
-                placeholder="Rechercher..."
-                style={{ flex:1, border:'none', outline:'none', background:'transparent',
-                  fontSize:13, fontFamily:'var(--ff)', color:'var(--tx)' }}
-              />
-              {dossierId && (
-                <button onClick={clearDossier} style={{ background:'none', border:'none', cursor:'pointer',
-                  padding:0, color:'var(--tx4)', display:'flex' }}>
-                  <Ic.X />
-                </button>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div className="fg" style={{ position:'relative' }}>
+                <label className="lbl" style={{ color:'var(--or)' }}>Dossier — N° DP, client, partenaire</label>
+                <div style={{ display:'flex', alignItems:'center', gap:6, border:'1.5px solid var(--bd)',
+                  borderRadius:'var(--r)', padding:'6px 10px', background:'var(--bg3)' }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--tx3)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input value={dossierSearch}
+                    onChange={e => { setDossierSearch(e.target.value); setDossierId(''); setDossierDropOpen(true); }}
+                    onFocus={() => setDossierDropOpen(true)}
+                    onBlur={() => setTimeout(() => setDossierDropOpen(false), 150)}
+                    placeholder="Rechercher..."
+                    style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:13, fontFamily:'var(--ff)', color:'var(--tx)' }}
+                  />
+                  {dossierId && (
+                    <button onClick={clearDossier} style={{ background:'none', border:'none', cursor:'pointer', padding:0, color:'var(--tx4)', display:'flex' }}>
+                      <Ic.X />
+                    </button>
+                  )}
+                </div>
+                {dossierDropOpen && filteredDossiers.length > 0 && !dossierId && (
+                  <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:10,
+                    background:'var(--bg2)', border:'1.5px solid var(--bd)', borderRadius:'var(--r)',
+                    maxHeight:200, overflowY:'auto', boxShadow:'0 16px 40px rgba(0,0,0,.14)', marginTop:2 }}>
+                    {filteredDossiers.slice(0, 20).map(dd => (
+                      <div key={dd.id} onClick={() => selectDossier(dd)}
+                        style={{ padding:'8px 12px', fontSize:13, cursor:'pointer', color:'var(--tx)', display:'flex', alignItems:'center', gap:6 }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--or-l)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                        {dd.dp_number && <span style={{ fontWeight:700, color:'var(--or)', fontSize:11,
+                          background:'var(--or-l)', padding:'1px 6px', borderRadius:6, flexShrink:0 }}>{dd.dp_number}</span>}
+                        <span style={{ fontWeight:600 }}>{dd.client || `#${dd.id}`}</span>
+                        {dd.client_org && <span style={{ color:'var(--tx3)', fontSize:12 }}>({dd.client_org})</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="fg">
+                <label className="lbl" style={{ color:'var(--or)' }}>Destinataire *</label>
+                <input autoComplete="nope" name="email-destinataire" value={to} onChange={e => setTo(e.target.value)} placeholder="email@exemple.fr" />
+              </div>
+            </div>
+
+            <div className="fg">
+              <label className="lbl" style={{ color:'var(--or)' }}>Nom destinataire</label>
+              <input autoComplete="off" name="nom-destinataire" value={toName} onChange={e => setToName(e.target.value)} placeholder="Prénom Nom (optionnel)" />
+            </div>
+
+            {tab === 'template' && (<>
+              <div className="fg">
+                <label className="lbl" style={{ color:'var(--or)' }}>Template *</label>
+                <select className="fsel" style={{ width:'100%', padding:'8px 10px' }} value={templateId} onChange={e => setTemplateId(e.target.value)}>
+                  <option value="">— choisir un template —</option>
+                  {Object.entries(
+                    templates.reduce((acc, t) => { (acc[t.category] = acc[t.category] || []).push(t); return acc; }, {})
+                  ).map(([cat, tpls]) => (
+                    <optgroup key={cat} label={(CATEGORY_LABELS[cat]||{label:cat}).label}>
+                      {tpls.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              {tplObj && (
+                <div style={{ background:'var(--bg3)', border:'1.5px solid var(--bd)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'var(--tx3)' }}>
+                  <strong style={{ color:'var(--tx2)' }}>{tplObj.name}</strong>
+                  <span style={{ marginLeft:10 }}><CatBadge cat={tplObj.category} /></span>
+                  <div style={{ marginTop:4 }}>Variables : {(tplObj.variables||[]).map(v => (
+                    <code key={v} style={{ background:'var(--bg2)', padding:'1px 5px', borderRadius:4, marginRight:4, fontSize:11 }}>{`{{${v}}}`}</code>
+                  ))}</div>
+                </div>
+              )}
+              <div className="fg">
+                <label className="lbl" style={{ color:'var(--or)' }}>Variables supplémentaires (JSON, optionnel)</label>
+                <input value={extraVars} onChange={e => setExtraVars(e.target.value)}
+                  placeholder='{"missing_docs": "• KBIS\\n• RIB"}' />
+              </div>
+            </>)}
+
+            {tab === 'manual' && (<>
+              <div className="fg">
+                <label className="lbl" style={{ color:'var(--or)' }}>Sujet *</label>
+                <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Objet de l'email" />
+              </div>
+              <div className="fg">
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                  <label className="lbl" style={{ color:'var(--or)', margin:0 }}>Corps du mail *</label>
+                  <div style={{ display:'flex', background:'var(--bg3)', border:'1px solid var(--bd)', borderRadius:6, overflow:'hidden' }}>
+                    {[['visual','Visuel'],['html','HTML']].map(([m,l]) => (
+                      <button key={m}
+                        onClick={() => {
+                          if (m === 'html' && editMode === 'visual' && visualRef.current) {
+                            setBodyHtml(visualRef.current.innerHTML);
+                          }
+                          setEditMode(m);
+                        }}
+                        style={{ padding:'3px 12px', fontSize:11, fontWeight:600, border:'none', cursor:'pointer',
+                          background: editMode===m ? 'var(--or)' : 'transparent',
+                          color: editMode===m ? '#fff' : 'var(--tx3)',
+                          transition:'background .15s' }}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {editMode === 'visual' ? (
+                  <div
+                    ref={setVisualRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={e => setBodyHtml(e.currentTarget.innerHTML)}
+                    style={{
+                      minHeight:160, padding:12,
+                      border:'1.5px solid var(--bd)', borderRadius:'var(--r)',
+                      background:'#fff', outline:'none',
+                      fontSize:13, fontFamily:'var(--ff)', color:'#000',
+                      lineHeight:1.6, overflowY:'auto',
+                    }}
+                  />
+                ) : (
+                  <textarea value={bodyHtml} onChange={e => setBodyHtml(e.target.value)}
+                    style={{ minHeight:160, fontFamily:'monospace', fontSize:12 }}
+                    placeholder="<p>Bonjour,</p><p>...</p>" />
+                )}
+              </div>
+            </>)}
+
+            {/* Pièces jointes */}
+            <div className="fg">
+              <label className="lbl" style={{ color:'var(--or)' }}>Pièces jointes</label>
+              <label style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'7px 14px', background:'var(--bg3)', border:'1.5px dashed var(--bd)', borderRadius:8, cursor:'pointer', fontSize:13, color:'var(--tx2)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                Ajouter un fichier
+                <input type="file" multiple style={{ display:'none' }}
+                  onChange={e => setAttachments(prev => [...prev, ...Array.from(e.target.files)])} />
+              </label>
+              {attachments.length > 0 && (
+                <div style={{ display:'flex', flexWrap:'wrap', gap:6, marginTop:8 }}>
+                  {attachments.map((f, i) => (
+                    <span key={i} style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 10px', background:'var(--or-l)', border:'1px solid var(--or)', borderRadius:20, fontSize:12, color:'var(--or)', fontWeight:600 }}>
+                      {f.name}
+                      <button onClick={() => setAttachments(prev => prev.filter((_, j) => j !== i))}
+                        style={{ background:'none', border:'none', cursor:'pointer', color:'var(--or)', fontWeight:900, padding:0, lineHeight:1, fontSize:14 }}>×</button>
+                    </span>
+                  ))}
+                </div>
               )}
             </div>
-            {dossierDropOpen && filteredDossiers.length > 0 && !dossierId && (
-              <div style={{ position:'absolute', top:'100%', left:0, right:0, zIndex:10,
-                background:'var(--bg2)', border:'1.5px solid var(--bd)', borderRadius:'var(--r)',
-                maxHeight:200, overflowY:'auto', boxShadow:'0 16px 40px rgba(0,0,0,.14)', marginTop:2 }}>
-                {filteredDossiers.slice(0, 20).map(dd => (
-                  <div key={dd.id} onClick={() => selectDossier(dd)}
-                    style={{ padding:'8px 12px', fontSize:13, cursor:'pointer', color:'var(--tx)',
-                      transition:'background 0.1s', display:'flex', alignItems:'center', gap:6 }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--or-l)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    {dd.dp_number && <span style={{ fontWeight:700, color:'var(--or)', fontSize:11,
-                      background:'var(--or-l)', padding:'1px 6px', borderRadius:6, flexShrink:0 }}>{dd.dp_number}</span>}
-                    <span style={{ fontWeight:600 }}>{dd.client || `#${dd.id}`}</span>
-                    {dd.client_org && <span style={{ color:'var(--tx3)', fontSize:12 }}>({dd.client_org})</span>}
-                  </div>
-                ))}
+
+            {/* Schedule */}
+            <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+              <input type="checkbox" id="sched" checked={schedule} onChange={e => setSchedule(e.target.checked)} />
+              <label htmlFor="sched" style={{ fontSize:13, cursor:'pointer', color:'var(--tx2)' }}>Programmer l'envoi</label>
+            </div>
+            {schedule && (
+              <div className="fg">
+                <label className="lbl" style={{ color:'var(--or)' }}>Date et heure d'envoi *</label>
+                <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
               </div>
             )}
           </div>
-          <div className="fg">
-            <label className="lbl" style={{ color:'var(--or)' }}>Destinataire *</label>
-            <input value={to} onChange={e => setTo(e.target.value)} placeholder="email@exemple.fr" />
+          {/* Footer */}
+          <div className="mftr" style={{ justifyContent:'space-between' }}>
+            <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+              {previewLoading && <span style={{ fontSize:11, color:'var(--tx3)' }}>Chargement aperçu...</span>}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button className="btn btn-s" onClick={onClose}>Annuler</button>
+              <button className="btn btn-p" onClick={handleSend} disabled={loading}>
+                {schedule ? <Ic.Clock /> : <Ic.Send />}
+                {loading ? 'Envoi...' : (schedule ? 'Programmer' : 'Envoyer')}
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="fg">
-          <label className="lbl" style={{ color:'var(--or)' }}>Nom destinataire</label>
-          <input value={toName} onChange={e => setToName(e.target.value)} placeholder="Prénom Nom (optionnel)" />
+        {/* ── Colonne droite : aperçu ── */}
+        <div style={{
+          flex:1, minWidth:0,
+          background:'var(--bg2)', borderRadius:'var(--rl)',
+          boxShadow:'var(--shl)', display:'flex', flexDirection:'column',
+          overflow:'hidden',
+          opacity: preview ? 1 : 0.35,
+          transition:'opacity .25s',
+        }}>
+          <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--bd)', background:'var(--bg3)', flexShrink:0 }}>
+            <div style={{ fontWeight:700, fontSize:13, color:'var(--or)' }}>Aperçu du mail</div>
+            {preview && <div style={{ fontSize:12, color:'var(--tx2)', marginTop:2 }}>{preview.subject}</div>}
+            {!preview && <div style={{ fontSize:12, color:'var(--tx4)', marginTop:2 }}>Sélectionnez un template pour voir l'aperçu</div>}
+          </div>
+          <div style={{ flex:1, overflowY:'auto', padding:0 }}>
+            {preview
+              ? <div dangerouslySetInnerHTML={{ __html: preview.body_html }} style={{ fontSize:13 }} />
+              : <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'var(--tx4)', fontSize:13 }}>—</div>
+            }
+          </div>
         </div>
 
-        {tab === 'template' && (
-          <>
-            <div className="fg">
-              <label className="lbl" style={{ color:'var(--or)' }}>Template *</label>
-              <select className="fsel" style={{ width:'100%', padding:'8px 10px' }} value={templateId} onChange={e => setTemplateId(e.target.value)}>
-                <option value="">— choisir un template —</option>
-                {Object.entries(
-                  templates.reduce((acc, t) => { (acc[t.category] = acc[t.category] || []).push(t); return acc; }, {})
-                ).map(([cat, tpls]) => (
-                  <optgroup key={cat} label={(CATEGORY_LABELS[cat]||{label:cat}).label}>
-                    {tpls.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-
-            {tplObj && (
-              <div style={{ background:'var(--bg3)', border:'1.5px solid var(--bd)', borderRadius:8, padding:'10px 14px', fontSize:12, color:'var(--tx3)' }}>
-                <strong style={{ color:'var(--tx2)' }}>{tplObj.name}</strong>
-                <span style={{ marginLeft:10 }}><CatBadge cat={tplObj.category} /></span>
-                <div style={{ marginTop:4 }}>Variables : {(tplObj.variables||[]).map(v => (
-                  <code key={v} style={{ background:'var(--bg2)', padding:'1px 5px', borderRadius:4, marginRight:4, fontSize:11 }}>{`{{${v}}}`}</code>
-                ))}</div>
-              </div>
-            )}
-
-            <div className="fg">
-              <label className="lbl" style={{ color:'var(--or)' }}>Variables supplémentaires (JSON, optionnel)</label>
-              <input value={extraVars} onChange={e => setExtraVars(e.target.value)}
-                placeholder='{"missing_docs": "• KBIS\\n• RIB"}' />
-            </div>
-          </>
-        )}
-
-        {tab === 'manual' && (
-          <>
-            <div className="fg">
-              <label className="lbl" style={{ color:'var(--or)' }}>Sujet *</label>
-              <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Objet de l'email" />
-            </div>
-            <div className="fg">
-              <label className="lbl" style={{ color:'var(--or)' }}>Corps HTML *</label>
-              <textarea value={bodyHtml} onChange={e => setBodyHtml(e.target.value)} style={{ minHeight:140 }}
-                placeholder="<p>Bonjour,</p><p>...</p>" />
-            </div>
-            <div className="fg">
-              <label className="lbl" style={{ color:'var(--or)' }}>Corps texte brut (optionnel)</label>
-              <textarea value={bodyText} onChange={e => setBodyText(e.target.value)} style={{ minHeight:60 }}
-                placeholder="Version texte de l'email..." />
-            </div>
-          </>
-        )}
-
-        {/* Schedule */}
-        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <input type="checkbox" id="sched" checked={schedule} onChange={e => setSchedule(e.target.checked)} />
-          <label htmlFor="sched" style={{ fontSize:13, cursor:'pointer', color:'var(--tx2)' }}>Programmer l'envoi</label>
-        </div>
-        {schedule && (
-          <div className="fg">
-            <label className="lbl" style={{ color:'var(--or)' }}>Date et heure d'envoi *</label>
-            <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
-          </div>
-        )}
-
-        {/* Preview */}
-        {preview && (
-          <div style={{ border:'1.5px solid var(--bd)', borderRadius:10, overflow:'hidden' }}>
-            <div style={{ background:'var(--bg3)', padding:'8px 14px', borderBottom:'1px solid var(--bd)', fontSize:12, fontWeight:700, color:'var(--tx2)' }}>
-              Aperçu — {preview.subject}
-            </div>
-            <div style={{ padding:16, maxHeight:280, overflowY:'auto' }}
-              dangerouslySetInnerHTML={{ __html: preview.body_html }} />
-          </div>
-        )}
       </div>
-
-      <div className="mftr" style={{ justifyContent:'space-between' }}>
-        <div style={{ display:'flex', gap:8 }}>
-          {tab === 'template' && templateId && (
-            <button className="btn btn-s btn-sm" onClick={handlePreview} disabled={previewLoading}>
-              <Ic.Eye /> {previewLoading ? 'Chargement...' : 'Aperçu'}
-            </button>
-          )}
-        </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <button className="btn btn-s" onClick={onClose}>Annuler</button>
-          <button className="btn btn-p" onClick={handleSend} disabled={loading}>
-            {schedule ? <Ic.Clock /> : <Ic.Send />}
-            {loading ? 'Envoi...' : (schedule ? 'Programmer' : 'Envoyer')}
-          </button>
-        </div>
-      </div>
-    </Modal>
+    </div>
   );
 }
 
@@ -443,7 +539,7 @@ function PreviewModal({ template, onClose, onUse }) {
 
 // ── Tab: Composer ─────────────────────────────────────────────────────────────
 
-function TabCompose({ templates, dossiers, showCompose, setShowCompose, toast }) {
+function TabCompose({ templates, dossiers, showCompose, setShowCompose, toast, initialTemplateId = '', onModalClose }) {
   return (
     <div style={{ padding:'24px 0' }}>
       <div style={{ textAlign:'center', padding:'48px 24px' }}>
@@ -462,7 +558,8 @@ function TabCompose({ templates, dossiers, showCompose, setShowCompose, toast })
         <ComposeModal
           templates={templates}
           dossiers={dossiers}
-          onClose={() => setShowCompose(false)}
+          initialTemplateId={initialTemplateId}
+          onClose={() => { setShowCompose(false); onModalClose && onModalClose(); }}
           onSent={(mode) => toast(`Email ${mode} avec succès`, 'success')}
         />
       )}
@@ -495,49 +592,67 @@ function TabTemplates({ templates, setTemplates, toast, onUseTemplate }) {
     return acc;
   }, {});
 
+  const CAT_ORDER = ['client','mairie','administration','general'];
+  const sortedEntries = CAT_ORDER
+    .filter(k => grouped[k])
+    .map(k => [k, grouped[k]])
+    .concat(Object.entries(grouped).filter(([k]) => !CAT_ORDER.includes(k)));
+
   return (
     <div>
-      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:16 }}>
+      <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:20 }}>
         <button className="btn btn-p btn-sm" onClick={() => setEditing({})}>
           <Ic.Plus /> Nouveau template
         </button>
       </div>
 
-      {Object.entries(grouped).map(([cat, tpls]) => (
-        <div key={cat} style={{ marginBottom:24 }}>
-          <div style={{ fontSize:11, fontWeight:800, color:'var(--tx3)', textTransform:'uppercase', letterSpacing:'.1em', marginBottom:10 }}>
-            {(CATEGORY_LABELS[cat]||{label:cat}).label} ({tpls.length})
-          </div>
-          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-            {tpls.map(t => (
-              <div key={t.id} style={{ background:'var(--bg2)', border:'1.5px solid var(--bd)', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'center', gap:12 }}>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                    <span style={{ fontWeight:700, fontSize:14 }}>{t.name}</span>
-                    <CatBadge cat={t.category} />
-                  </div>
-                  <div style={{ fontSize:12, color:'var(--tx3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{t.subject}</div>
-                  {t.variables?.length > 0 && (
-                    <div style={{ marginTop:4 }}>
-                      {t.variables.map(v => (
-                        <code key={v} style={{ background:'var(--bg3)', padding:'1px 5px', borderRadius:4, marginRight:4, fontSize:10, color:'var(--tx3)' }}>{`{{${v}}}`}</code>
-                      ))}
+      {sortedEntries.map(([cat, tpls]) => {
+        const cl = CATEGORY_LABELS[cat] || CATEGORY_LABELS.general;
+        return (
+          <div key={cat} style={{ marginBottom:28 }}>
+            {/* En-tête de catégorie */}
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
+              <div style={{ width:3, height:18, background:cl.color, borderRadius:2, flexShrink:0 }} />
+              <span style={{ fontSize:12, fontWeight:800, color:cl.color, textTransform:'uppercase', letterSpacing:'.08em' }}>
+                {cl.label}
+              </span>
+              <span style={{ fontSize:11, color:'var(--tx3)', background:'var(--bg3)', borderRadius:10, padding:'1px 8px' }}>
+                {tpls.length}
+              </span>
+            </div>
+
+            {/* Tableau */}
+            <div style={{ background:'var(--bg2)', border:'1.5px solid var(--bd)', borderRadius:10, overflow:'hidden' }}>
+              {tpls.map((t, i) => (
+                <div key={t.id} style={{
+                  display:'grid', gridTemplateColumns:'1fr auto',
+                  alignItems:'center', gap:16,
+                  padding:'13px 16px',
+                  borderBottom: i < tpls.length - 1 ? '1px solid var(--bd)' : 'none',
+                  transition:'background .12s',
+                }}>
+                  {/* Infos */}
+                  <div style={{ minWidth:0 }}>
+                    <div style={{ fontWeight:700, fontSize:13, color:'var(--tx1)', marginBottom:3, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      {t.name}
                     </div>
-                  )}
+                    <div style={{ fontSize:12, color:'var(--tx3)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                      {t.subject}
+                    </div>
+                  </div>
+                  {/* Actions */}
+                  <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+                    <button className="bic" title="Aperçu" onClick={() => setPreviewing(t)}><Ic.Eye /></button>
+                    <button className="bic" title="Utiliser" style={{ color:'var(--or)' }} onClick={() => onUseTemplate(t)}><Ic.Send /></button>
+                    <button className="bic" title="Modifier" onClick={() => setEditing(t)}><Ic.Edit /></button>
+                    <button className="bic" title="Supprimer" style={{ color:'var(--re)' }} onClick={() => handleDelete(t)}><Ic.Trash /></button>
+                  </div>
                 </div>
-                <div style={{ display:'flex', gap:6, flexShrink:0 }}>
-                  <button className="bic" title="Aperçu" onClick={() => setPreviewing(t)}><Ic.Eye /></button>
-                  <button className="bic" title="Utiliser" onClick={() => onUseTemplate(t)}>
-                    <Ic.Send />
-                  </button>
-                  <button className="bic" title="Modifier" onClick={() => setEditing(t)}><Ic.Edit /></button>
-                  <button className="bic" title="Supprimer" style={{ color:'var(--re)' }} onClick={() => handleDelete(t)}><Ic.Trash /></button>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {editing !== null && (
         <TemplateModal template={editing.id ? editing : null} onClose={() => setEditing(null)}
@@ -551,12 +666,84 @@ function TabTemplates({ templates, setTemplates, toast, onUseTemplate }) {
   );
 }
 
+// ── Edit modal for a queued email ─────────────────────────────────────────────
+
+function EditQueueModal({ item, onClose, onSaved }) {
+  const [to, setTo] = useState(item.to_email || '');
+  const [toName, setToName] = useState(item.to_name || '');
+  const [subject, setSubject] = useState(item.subject || '');
+  const [bodyHtml, setBodyHtml] = useState(item.body_html || '');
+  const [scheduledAt, setScheduledAt] = useState(
+    item.scheduled_at ? new Date(item.scheduled_at).toISOString().slice(0,16) : ''
+  );
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!to) return;
+    setSaving(true);
+    try {
+      await updateQueuedEmail(item.id, {
+        to, to_name: toName, subject, body_html: bodyHtml,
+        scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : undefined,
+      });
+      onSaved();
+      onClose();
+    } catch (e) { alert('Erreur : ' + e.message); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <Modal title="Modifier l'email programmé" onClose={onClose} maxWidth={680}>
+      <div className="mbdy" style={{ display:'flex', flexDirection:'column', gap:14 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <div className="fg">
+            <label className="lbl" style={{ color:'var(--or)' }}>Destinataire *</label>
+            <input autoComplete="nope" value={to} onChange={e => setTo(e.target.value)} placeholder="email@exemple.fr" />
+          </div>
+          <div className="fg">
+            <label className="lbl" style={{ color:'var(--or)' }}>Nom destinataire</label>
+            <input autoComplete="nope" value={toName} onChange={e => setToName(e.target.value)} placeholder="Prénom Nom" />
+          </div>
+        </div>
+        <div className="fg">
+          <label className="lbl" style={{ color:'var(--or)' }}>Sujet *</label>
+          <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Sujet de l'email" />
+        </div>
+        <div className="fg">
+          <label className="lbl" style={{ color:'var(--or)' }}>Date d'envoi programmé</label>
+          <input type="datetime-local" value={scheduledAt} onChange={e => setScheduledAt(e.target.value)} />
+        </div>
+        <div className="fg">
+          <label className="lbl" style={{ color:'var(--or)' }}>Corps du mail (HTML)</label>
+          <textarea value={bodyHtml} onChange={e => setBodyHtml(e.target.value)}
+            rows={10} style={{ fontFamily:'monospace', fontSize:12, resize:'vertical' }} />
+        </div>
+        {bodyHtml && (
+          <details style={{ border:'1px solid var(--bd)', borderRadius:8, padding:'8px 12px' }}>
+            <summary style={{ fontSize:12, color:'var(--tx3)', cursor:'pointer', userSelect:'none' }}>Aperçu rendu</summary>
+            <div style={{ marginTop:8, padding:8, background:'#fff', borderRadius:6, border:'1px solid var(--bd)' }}
+              dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+          </details>
+        )}
+      </div>
+      <div className="mftr">
+        <button className="btn btn-s" onClick={onClose}>Annuler</button>
+        <button className="btn btn-p" onClick={handleSave} disabled={saving || !to}>
+          {saving ? 'Sauvegarde...' : 'Enregistrer les modifications'}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Tab: Queue ────────────────────────────────────────────────────────────────
 
 function TabQueue({ toast }) {
   const [queue, setQueue] = useState([]);
   const [filter, setFilter] = useState('pending');
   const [loading, setLoading] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const [hovered, setHovered] = useState(null); // item survolé pour aperçu
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -576,48 +763,108 @@ function TabQueue({ toast }) {
   };
 
   return (
-    <div>
-      <div style={{ display:'flex', gap:8, marginBottom:16, alignItems:'center' }}>
-        <span style={{ fontSize:12, color:'var(--tx3)', fontWeight:600 }}>Filtrer :</span>
-        {[['', 'Tous'], ['pending','En attente'], ['sent','Envoyés'], ['error','Erreurs'], ['cancelled','Annulés']].map(([v,l]) => (
-          <button key={v} className={`btn btn-sm ${filter===v?'btn-p':'btn-s'}`} onClick={() => setFilter(v)}>{l}</button>
-        ))}
-        <button className="bic" style={{ marginLeft:'auto' }} onClick={reload} title="Actualiser">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-        </button>
+    <div style={{ display:'flex', gap:20, alignItems:'flex-start' }}>
+      {/* Liste des emails */}
+      <div style={{ flex:'0 0 380px', minWidth:0 }}>
+        {editing && (
+          <EditQueueModal
+            item={editing}
+            onClose={() => setEditing(null)}
+            onSaved={() => { toast('Email mis à jour', 'success'); reload(); }}
+          />
+        )}
+        <div style={{ display:'flex', gap:8, marginBottom:16, alignItems:'center', flexWrap:'wrap' }}>
+          <span style={{ fontSize:12, color:'var(--tx3)', fontWeight:600 }}>Filtrer :</span>
+          {[['', 'Tous'], ['pending','En attente'], ['sent','Envoyés'], ['error','Erreurs'], ['cancelled','Annulés']].map(([v,l]) => (
+            <button key={v} className={`btn btn-sm ${filter===v?'btn-p':'btn-s'}`} onClick={() => setFilter(v)}>{l}</button>
+          ))}
+          <button className="bic" style={{ marginLeft:'auto' }} onClick={reload} title="Actualiser">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign:'center', padding:40, color:'var(--tx4)' }}>Chargement...</div>
+        ) : queue.length === 0 ? (
+          <div style={{ textAlign:'center', padding:40, color:'var(--tx4)', fontSize:13 }}>Aucun email dans la file</div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {queue.map(item => (
+              <div key={item.id}
+                onMouseEnter={() => setHovered(item)}
+                onMouseLeave={() => setHovered(h => h?.id === item.id ? null : h)}
+                style={{
+                  background:'var(--bg2)',
+                  border: hovered?.id === item.id ? '1.5px solid var(--or)' : '1.5px solid var(--bd)',
+                  borderRadius:10, padding:'12px 16px',
+                  display:'flex', alignItems:'flex-start', gap:12,
+                  cursor:'default', transition:'border-color .15s',
+                }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
+                    <span style={{ fontWeight:700, fontSize:13 }}>{item.to_email}</span>
+                    {item.to_name && <span style={{ fontSize:12, color:'var(--tx3)' }}>({item.to_name})</span>}
+                    <StatusBadge status={item.status} />
+                  </div>
+                  <div style={{ fontSize:12, color:'var(--tx2)', marginBottom:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{item.subject}</div>
+                  <div style={{ fontSize:11, color:'var(--tx4)' }}>
+                    {item.scheduled_at && <span>Programmé : {new Date(item.scheduled_at).toLocaleString('fr-FR')}</span>}
+                    {item.sent_at && <span> · Envoyé : {new Date(item.sent_at).toLocaleString('fr-FR')}</span>}
+                    {item.dossier_id && <span> · Dossier : {item.dossier_id}</span>}
+                  </div>
+                  {item.error && <div style={{ fontSize:11, color:'var(--re)', marginTop:4 }}>{item.error}</div>}
+                </div>
+                {item.status === 'pending' && (
+                  <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+                    <button className="bic" title="Modifier" style={{ color:'var(--or)' }} onClick={() => setEditing(item)}>
+                      <Ic.Edit />
+                    </button>
+                    <button className="bic" title="Annuler" style={{ color:'var(--re)' }} onClick={() => handleCancel(item.id)}>
+                      <Ic.Ban />
+                    </button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
-      {loading ? (
-        <div style={{ textAlign:'center', padding:40, color:'var(--tx4)' }}>Chargement...</div>
-      ) : queue.length === 0 ? (
-        <div style={{ textAlign:'center', padding:40, color:'var(--tx4)', fontSize:13 }}>Aucun email dans la file</div>
-      ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-          {queue.map(item => (
-            <div key={item.id} style={{ background:'var(--bg2)', border:'1.5px solid var(--bd)', borderRadius:10, padding:'12px 16px', display:'flex', alignItems:'flex-start', gap:12 }}>
-              <div style={{ flex:1, minWidth:0 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-                  <span style={{ fontWeight:700, fontSize:13 }}>{item.to_email}</span>
-                  {item.to_name && <span style={{ fontSize:12, color:'var(--tx3)' }}>({item.to_name})</span>}
-                  <StatusBadge status={item.status} />
-                </div>
-                <div style={{ fontSize:12, color:'var(--tx2)', marginBottom:2 }}>{item.subject}</div>
-                <div style={{ fontSize:11, color:'var(--tx4)' }}>
-                  {item.scheduled_at && <span>Programmé : {new Date(item.scheduled_at).toLocaleString('fr-FR')}</span>}
-                  {item.sent_at && <span> · Envoyé : {new Date(item.sent_at).toLocaleString('fr-FR')}</span>}
-                  {item.dossier_id && <span> · Dossier : {item.dossier_id}</span>}
-                </div>
-                {item.error && <div style={{ fontSize:11, color:'var(--re)', marginTop:4 }}>{item.error}</div>}
-              </div>
-              {item.status === 'pending' && (
-                <button className="bic" title="Annuler" style={{ color:'var(--re)' }} onClick={() => handleCancel(item.id)}>
-                  <Ic.Ban />
-                </button>
-              )}
+      {/* Panneau aperçu à droite */}
+      <div style={{
+        flex:1, minWidth:0,
+        position:'sticky', top:0,
+        background:'var(--bg2)',
+        border:'1.5px solid var(--bd)',
+        borderRadius:12,
+        overflow:'hidden',
+        transition:'opacity .2s',
+        opacity: hovered ? 1 : 0,
+        pointerEvents: hovered ? 'auto' : 'none',
+        minHeight:300,
+      }}>
+        {hovered && (<>
+          <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--bd)', background:'var(--bg3)', display:'flex', flexDirection:'column', gap:4 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontWeight:700, fontSize:13, color:'var(--or)' }}>{hovered.to_email}</span>
+              {hovered.to_name && <span style={{ fontSize:12, color:'var(--tx3)' }}>— {hovered.to_name}</span>}
+              <StatusBadge status={hovered.status} />
             </div>
-          ))}
-        </div>
-      )}
+            <div style={{ fontSize:13, fontWeight:600, color:'var(--tx1)' }}>{hovered.subject}</div>
+            {hovered.scheduled_at && (
+              <div style={{ fontSize:11, color:'var(--tx4)' }}>
+                Programmé : {new Date(hovered.scheduled_at).toLocaleString('fr-FR')}
+              </div>
+            )}
+          </div>
+          <div style={{ padding:16, overflow:'auto', maxHeight:'calc(70vh - 80px)' }}>
+            {hovered.body_html
+              ? <div dangerouslySetInnerHTML={{ __html: hovered.body_html }} style={{ fontSize:13 }} />
+              : <div style={{ color:'var(--tx4)', fontSize:13, textAlign:'center', padding:40 }}>Aucun contenu HTML</div>
+            }
+          </div>
+        </>)}
+      </div>
     </div>
   );
 }
@@ -696,11 +943,12 @@ export default function EmailModule({ dossiers = [] }) {
     setToast({ msg, type });
   }, []);
 
+  const [composeTemplateId, setComposeTemplateId] = useState('');
+
   const handleUseTemplate = (template) => {
+    setComposeTemplateId(String(template.id));
     setTab('compose');
     setShowCompose(true);
-    // The compose modal will handle pre-selecting the template
-    // via URL param or state — for simplicity, just open compose
   };
 
   const TABS = [
@@ -747,6 +995,8 @@ export default function EmailModule({ dossiers = [] }) {
                 showCompose={showCompose}
                 setShowCompose={setShowCompose}
                 toast={showToast}
+                initialTemplateId={composeTemplateId}
+                onModalClose={() => setComposeTemplateId('')}
               />
             )}
             {tab === 'templates' && (
@@ -770,7 +1020,8 @@ export default function EmailModule({ dossiers = [] }) {
         <ComposeModal
           templates={templates}
           dossiers={dossiers}
-          onClose={() => setShowCompose(false)}
+          initialTemplateId={composeTemplateId}
+          onClose={() => { setShowCompose(false); setComposeTemplateId(''); }}
           onSent={(mode) => showToast(`Email ${mode} avec succès`, 'success')}
         />
       )}

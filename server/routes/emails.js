@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const nodemailer = require('nodemailer');
 const cron = require('node-cron');
+const multer = require('multer');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 const SMTP_EMAIL = process.env.SMTP_EMAIL;
 const SMTP_PASSWORD = process.env.SMTP_PASSWORD;
@@ -57,7 +59,7 @@ function getTransporter(email, password) {
  * @param {string} opts.smtp_user   — email SMTP (optionnel, fallback .env)
  * @param {string} opts.smtp_pass   — mot de passe SMTP (optionnel, fallback .env)
  */
-async function sendViaSmtp({ smtp_user, smtp_pass, from_email, from_name, to, to_name, subject, html, text }) {
+async function sendViaSmtp({ smtp_user, smtp_pass, from_email, from_name, to, to_name, subject, html, text, attachments = [] }) {
   const user = smtp_user || FROM_EMAIL;
   const pass = smtp_pass || SMTP_PASSWORD;
   if (!user || !pass) throw new Error('SMTP non configuré — renseigne SMTP_EMAIL et SMTP_PASSWORD dans .env ou le mot de passe SMTP dans ton profil CRM');
@@ -70,6 +72,7 @@ async function sendViaSmtp({ smtp_user, smtp_pass, from_email, from_name, to, to
     subject,
     html,
     text: text || undefined,
+    attachments: attachments.map(f => ({ filename: f.originalname, content: f.buffer, contentType: f.mimetype })),
   });
   return { id: result.messageId };
 }
@@ -112,237 +115,221 @@ function dossierVars(dossier) {
 const DEFAULT_TEMPLATES = [
   {
     name: 'Confirmation de dossier',
-    subject: 'Confirmation de votre dossier {{dossier_id}} — Eco-Formalités',
+    subject: 'Votre dossier {{dossier_id}} — Eco-Formalités',
     category: 'client',
     variables: JSON.stringify(['client_name','dossier_id','dp_number','assignee','date_today']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#E8501A;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:20px;">Eco-Formalités</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
-    <p>Bonjour <strong>{{client_name}}</strong>,</p>
-    <p>Nous avons bien reçu votre dossier et nous vous confirmons son enregistrement dans notre système.</p>
-    <table style="width:100%;background:#F5F5F0;border-radius:8px;padding:16px;margin:16px 0;border-collapse:collapse;">
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Référence dossier</td><td style="padding:6px 12px;font-weight:700;">{{dossier_id}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">N° Demande Préalable</td><td style="padding:6px 12px;font-weight:700;">{{dp_number}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Chargé de dossier</td><td style="padding:6px 12px;font-weight:700;">{{assignee}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Date</td><td style="padding:6px 12px;">{{date_today}}</td></tr>
+    <p>Bonjour {{client_name}},</p>
+    <p>Votre dossier est bien enregistré. Voici un récapitulatif :</p>
+    <table style="width:100%;background:#FEF3EE;border-radius:8px;padding:14px;margin:16px 0;border-collapse:collapse;">
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Référence</td><td style="padding:5px 12px;font-weight:700;">{{dossier_id}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">N° Demande Préalable</td><td style="padding:5px 12px;font-weight:700;">{{dp_number}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Votre conseiller</td><td style="padding:5px 12px;font-weight:700;">{{assignee}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Date</td><td style="padding:5px 12px;">{{date_today}}</td></tr>
     </table>
-    <p>Votre chargé de dossier prendra contact avec vous sous 48h pour vous informer des prochaines étapes.</p>
-    <p style="margin-top:24px;">Cordialement,<br><strong>L'équipe {{company_name}}</strong></p>
+    <p>On revient vers vous sous 48h pour la suite.</p>
+    <p style="margin-top:24px;">Bonne journée,<br><strong>{{assignee}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_name}}</span></p>
   </div>
-  <div style="background:#F5F5F0;padding:12px 24px;text-align:center;font-size:11px;color:#A0A090;border-radius:0 0 8px 8px;">
+  <div style="background:#FEF3EE;padding:10px 24px;text-align:center;font-size:11px;color:#A0A090;border-radius:0 0 8px 8px;">
     {{company_name}} — {{company_email}}
   </div>
 </div>`,
-    body_text: `Bonjour {{client_name}},\n\nNous confirmons l'enregistrement de votre dossier {{dossier_id}} (DP: {{dp_number}}).\nVotre chargé de dossier : {{assignee}}\n\nCordialement,\n{{company_name}}`
+    body_text: `Bonjour {{client_name}},\n\nVotre dossier {{dossier_id}} est bien enregistré (DP: {{dp_number}}).\nVotre conseiller : {{assignee}}\n\nOn revient vers vous sous 48h.\n\n{{assignee}} — {{company_name}}`
   },
   {
     name: 'Demande Préalable — Mairie',
-    subject: 'Demande Préalable de Travaux — {{client_name}} — Parcelle {{dp_number}}',
+    subject: 'Dépôt déclaration préalable — {{client_name}} — {{dp_number}}',
     category: 'mairie',
     variables: JSON.stringify(['client_name','client_address','dp_number','dossier_id','date_today']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#1A4A8A;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:18px;">Eco-Formalités — Demande Préalable</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités — Dépôt de déclaration préalable</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
     <p>Madame, Monsieur,</p>
-    <p>Nous représentons <strong>{{client_name}}</strong>, propriétaire situé au <strong>{{client_address}}</strong>, pour le dépôt d'une demande préalable de travaux.</p>
-    <p>Vous trouverez ci-joint le dossier complet de demande préalable réf. <strong>{{dp_number}}</strong>.</p>
-    <p>Nous vous serions reconnaissants de bien vouloir accuser réception du présent courrier et de nous communiquer le numéro d'enregistrement officiel.</p>
-    <table style="width:100%;background:#F5F5F0;border-radius:8px;padding:16px;margin:16px 0;border-collapse:collapse;">
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Référence interne</td><td style="padding:6px 12px;font-weight:700;">{{dossier_id}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Demande Préalable n°</td><td style="padding:6px 12px;font-weight:700;">{{dp_number}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Date de dépôt</td><td style="padding:6px 12px;">{{date_today}}</td></tr>
+    <p>Je vous contacte au nom de <strong>{{client_name}}</strong>, domicilié au <strong>{{client_address}}</strong>, pour le dépôt d'une déclaration préalable de travaux.</p>
+    <p>Vous trouverez le dossier complet en pièce jointe.</p>
+    <table style="width:100%;background:#FEF3EE;border-radius:8px;padding:14px;margin:16px 0;border-collapse:collapse;">
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Réf. interne</td><td style="padding:5px 12px;font-weight:700;">{{dossier_id}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">N° déclaration</td><td style="padding:5px 12px;font-weight:700;">{{dp_number}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Date</td><td style="padding:5px 12px;">{{date_today}}</td></tr>
     </table>
-    <p>Dans l'attente de votre retour, nous restons à votre disposition pour tout renseignement complémentaire.</p>
-    <p style="margin-top:24px;">Veuillez agréer l'expression de nos salutations distinguées,<br><strong>{{company_name}}</strong><br>{{company_email}}</p>
+    <p>Merci de bien vouloir accuser réception et nous transmettre le numéro d'enregistrement officiel.</p>
+    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_email}}</span></p>
   </div>
 </div>`,
-    body_text: `Madame, Monsieur,\n\nNous représentons {{client_name}} ({{client_address}}) pour le dépôt d'une demande préalable réf. {{dp_number}}.\n\nMerci d'accuser réception.\n\n{{company_name}} — {{company_email}}`
+    body_text: `Madame, Monsieur,\n\nDépôt d'une déclaration préalable pour {{client_name}} ({{client_address}}).\nRéf: {{dossier_id}} — N° déclaration: {{dp_number}} — {{date_today}}\n\nMerci d'accuser réception.\n\n{{company_name}} — {{company_email}}`
   },
   {
     name: 'Raccordement Enedis',
-    subject: 'Demande de raccordement — Dossier {{dossier_id}} — {{client_name}}',
+    subject: 'Demande raccordement — {{client_name}} — Réf. {{dossier_id}}',
     category: 'administration',
     variables: JSON.stringify(['client_name','client_address','client_phone','dossier_id','dp_number','date_today']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#059669;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:18px;">Eco-Formalités — Demande de Raccordement</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités — Raccordement réseau</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
     <p>Madame, Monsieur,</p>
-    <p>Nous prenons contact avec vous pour la demande de raccordement au réseau pour notre client :</p>
-    <table style="width:100%;background:#F5F5F0;border-radius:8px;padding:16px;margin:16px 0;border-collapse:collapse;">
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Client</td><td style="padding:6px 12px;font-weight:700;">{{client_name}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Adresse des travaux</td><td style="padding:6px 12px;font-weight:700;">{{client_address}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Téléphone</td><td style="padding:6px 12px;">{{client_phone}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Référence dossier</td><td style="padding:6px 12px;font-weight:700;">{{dossier_id}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">DP n°</td><td style="padding:6px 12px;">{{dp_number}}</td></tr>
+    <p>Je vous transmets une demande de raccordement pour le client suivant :</p>
+    <table style="width:100%;background:#FEF3EE;border-radius:8px;padding:14px;margin:16px 0;border-collapse:collapse;">
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Client</td><td style="padding:5px 12px;font-weight:700;">{{client_name}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Adresse travaux</td><td style="padding:5px 12px;font-weight:700;">{{client_address}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Téléphone</td><td style="padding:5px 12px;">{{client_phone}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Réf. dossier</td><td style="padding:5px 12px;font-weight:700;">{{dossier_id}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">N° DP</td><td style="padding:5px 12px;">{{dp_number}}</td></tr>
     </table>
-    <p>Vous trouverez en pièces jointes les documents nécessaires au traitement de cette demande. Merci de nous confirmer la réception et de nous communiquer le numéro de dossier de raccordement.</p>
-    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br>{{company_email}}</p>
+    <p>Les pièces nécessaires sont jointes. Merci de confirmer la réception et de nous communiquer le numéro de dossier de raccordement.</p>
+    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_email}}</span></p>
   </div>
 </div>`,
-    body_text: `Demande de raccordement — {{client_name}} ({{client_address}}) — Réf: {{dossier_id}}\n\n{{company_name}} — {{company_email}}`
+    body_text: `Madame, Monsieur,\n\nDemande de raccordement pour {{client_name}} ({{client_address}}) — Tél: {{client_phone}}\nRéf: {{dossier_id}} — DP: {{dp_number}}\n\nMerci de confirmer la réception.\n\n{{company_name}} — {{company_email}}`
   },
   {
-    name: 'CONSUEL — Demande de visa',
-    subject: 'Demande de CONSUEL — {{client_name}} — Dossier {{dossier_id}}',
+    name: 'Consuel — Demande de visa',
+    subject: 'Demande Consuel — {{client_name}} — Réf. {{dossier_id}}',
     category: 'administration',
     variables: JSON.stringify(['client_name','client_address','dossier_id','date_today']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#6B35C8;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:18px;">Eco-Formalités — Demande CONSUEL</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités — Demande Consuel</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
     <p>Madame, Monsieur,</p>
-    <p>Nous vous adressons la présente demande de visa CONSUEL pour l'installation de notre client <strong>{{client_name}}</strong> situé au <strong>{{client_address}}</strong>.</p>
-    <p>Référence dossier : <strong>{{dossier_id}}</strong><br>Date : <strong>{{date_today}}</strong></p>
-    <p>Vous trouverez en pièce jointe le schéma unifilaire et l'attestation de conformité de l'installation.</p>
-    <p>Merci de nous faire parvenir le visa CONSUEL dès validation.</p>
-    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br>{{company_email}}</p>
+    <p>Je vous adresse une demande de visa Consuel pour l'installation de <strong>{{client_name}}</strong>, situé au <strong>{{client_address}}</strong> (réf. <strong>{{dossier_id}}</strong>).</p>
+    <p>Le schéma unifilaire et l'attestation de conformité sont joints à ce message.</p>
+    <p>Merci de nous retourner le visa dès validation.</p>
+    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_email}}</span></p>
   </div>
 </div>`,
-    body_text: `Demande CONSUEL — {{client_name}} ({{client_address}}) — Réf: {{dossier_id}} — {{date_today}}\n\n{{company_name}} — {{company_email}}`
+    body_text: `Madame, Monsieur,\n\nDemande Consuel pour {{client_name}} ({{client_address}}) — Réf: {{dossier_id}} — {{date_today}}\nPièces jointes : schéma unifilaire + attestation conformité.\n\nMerci de nous retourner le visa.\n\n{{company_name}} — {{company_email}}`
   },
   {
     name: 'Document manquant',
-    subject: 'Dossier {{dossier_id}} — Document(s) manquant(s)',
+    subject: 'Dossier {{dossier_id}} — Documents à nous faire parvenir',
     category: 'client',
     variables: JSON.stringify(['client_name','dossier_id','missing_docs','assignee','company_email']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#d97706;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:20px;">Document(s) requis</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités — Documents requis</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
-    <p>Bonjour <strong>{{client_name}}</strong>,</p>
-    <p>Afin de finaliser le traitement de votre dossier <strong>{{dossier_id}}</strong>, il nous manque les documents suivants :</p>
-    <div style="background:#fffbeb;border-left:4px solid #d97706;padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0;">
+    <p>Bonjour {{client_name}},</p>
+    <p>Pour finaliser votre dossier <strong>{{dossier_id}}</strong>, il nous manque encore :</p>
+    <div style="background:#FEF3EE;border-left:3px solid #E8501A;padding:14px 18px;border-radius:0 6px 6px 0;margin:16px 0;">
       {{missing_docs}}
     </div>
-    <p>Merci de nous les faire parvenir dans les meilleurs délais en répondant directement à cet email ou en les déposant sur votre espace client.</p>
-    <p style="margin-top:24px;">Cordialement,<br><strong>{{assignee}}</strong><br>{{company_name}}<br>{{company_email}}</p>
+    <p>Vous pouvez nous les envoyer en répondant à cet email.</p>
+    <p style="margin-top:24px;">Bonne journée,<br><strong>{{assignee}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_name}} — {{company_email}}</span></p>
   </div>
 </div>`,
-    body_text: `Bonjour {{client_name}},\n\nDocuments manquants pour le dossier {{dossier_id}} :\n{{missing_docs}}\n\nMerci de nous les faire parvenir.\n\n{{assignee}} — {{company_name}}`
+    body_text: `Bonjour {{client_name}},\n\nPour finaliser votre dossier {{dossier_id}}, il nous manque :\n{{missing_docs}}\n\nEnvoyez-les en répondant à cet email.\n\n{{assignee}} — {{company_name}}`
   },
   {
     name: 'Dossier validé',
-    subject: '✅ Votre dossier {{dossier_id}} est validé !',
+    subject: 'Dossier {{dossier_id}} validé — Eco-Formalités',
     category: 'client',
     variables: JSON.stringify(['client_name','dossier_id','date_today','assignee']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#059669;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:20px;">✅ Dossier Validé</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités — Dossier validé</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
-    <p>Bonjour <strong>{{client_name}}</strong>,</p>
-    <p>Nous avons le plaisir de vous informer que votre dossier <strong>{{dossier_id}}</strong> a été <strong style="color:#059669;">validé</strong> en date du <strong>{{date_today}}</strong>.</p>
-    <div style="background:#ecfdf5;border-radius:8px;padding:16px;margin:16px 0;text-align:center;">
-      <p style="color:#059669;font-size:16px;font-weight:700;margin:0;">🎉 Toutes les démarches administratives sont complètes !</p>
-    </div>
-    <p>Merci de votre confiance. N'hésitez pas à nous contacter pour toute question.</p>
-    <p style="margin-top:24px;">Cordialement,<br><strong>{{assignee}}</strong><br>{{company_name}}</p>
+    <p>Bonjour {{client_name}},</p>
+    <p>Votre dossier <strong>{{dossier_id}}</strong> est validé en date du {{date_today}}. Toutes les démarches administratives sont terminées.</p>
+    <p>N'hésitez pas à nous contacter si vous avez des questions.</p>
+    <p style="margin-top:24px;">Bonne journée,<br><strong>{{assignee}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_name}}</span></p>
   </div>
 </div>`,
-    body_text: `Bonjour {{client_name}},\n\nVotre dossier {{dossier_id}} a été validé le {{date_today}}.\n\n{{assignee}} — {{company_name}}`
+    body_text: `Bonjour {{client_name}},\n\nVotre dossier {{dossier_id}} est validé ({{date_today}}). Toutes les démarches sont terminées.\n\n{{assignee}} — {{company_name}}`
   },
   {
     name: 'Relance client',
-    subject: 'Rappel — Dossier {{dossier_id}} en attente',
+    subject: 'Dossier {{dossier_id}} — En attente de votre retour',
     category: 'client',
     variables: JSON.stringify(['client_name','dossier_id','assignee','company_email']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#E8501A;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:20px;">Eco-Formalités — Rappel</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
-    <p>Bonjour <strong>{{client_name}}</strong>,</p>
-    <p>Nous revenons vers vous concernant votre dossier <strong>{{dossier_id}}</strong> qui est actuellement en attente de votre action.</p>
-    <p>Merci de bien vouloir nous contacter ou de répondre à cet email afin que nous puissions faire avancer votre dossier dans les meilleurs délais.</p>
-    <p style="margin-top:24px;">Cordialement,<br><strong>{{assignee}}</strong><br>{{company_name}}<br>{{company_email}}</p>
+    <p>Bonjour {{client_name}},</p>
+    <p>Je me permets de revenir vers vous concernant votre dossier <strong>{{dossier_id}}</strong>, toujours en attente de votre côté.</p>
+    <p>Pouvez-vous me donner signe de vie ? Je reste disponible par retour d'email ou par téléphone.</p>
+    <p style="margin-top:24px;">Bonne journée,<br><strong>{{assignee}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_name}} — {{company_email}}</span></p>
   </div>
 </div>`,
-    body_text: `Bonjour {{client_name}},\n\nRappel concernant votre dossier {{dossier_id}} en attente.\n\n{{assignee}} — {{company_name}} — {{company_email}}`
+    body_text: `Bonjour {{client_name}},\n\nJe reviens vers vous pour votre dossier {{dossier_id}}, toujours en attente.\nPouvez-vous me donner signe de vie ?\n\n{{assignee}} — {{company_name}} — {{company_email}}`
   },
   {
     name: 'Relance récépissé de dépôt (J+6)',
-    subject: 'Demande Préalable {{dp_number}} — {{client_name}} — Accusé de réception',
+    subject: 'DP {{dp_number}} — {{client_name}} — Demande de récépissé',
     category: 'mairie',
     variables: JSON.stringify(['client_name','client_address','dp_number','dossier_id','date_envoi_dp','date_today','company_name','company_email']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#1A4A8A;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:18px;">Eco-Formalités — Relance récépissé de dépôt</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités — Récépissé de dépôt</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
     <p>Madame, Monsieur,</p>
-    <p>Nous revenons vers vous concernant la demande préalable de travaux déposée pour notre client <strong>{{client_name}}</strong>, domicilié au <strong>{{client_address}}</strong>.</p>
-    <p>Notre dossier a été transmis à votre service le <strong>{{date_envoi_dp}}</strong> et nous n'avons pas encore reçu de récépissé de dépôt.</p>
-    <table style="width:100%;background:#F5F5F0;border-radius:8px;padding:16px;margin:16px 0;border-collapse:collapse;">
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Référence interne</td><td style="padding:6px 12px;font-weight:700;">{{dossier_id}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">N° Demande Préalable</td><td style="padding:6px 12px;font-weight:700;">{{dp_number}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Date d'envoi du dossier</td><td style="padding:6px 12px;">{{date_envoi_dp}}</td></tr>
+    <p>Je vous contacte au sujet de la déclaration préalable déposée le <strong>{{date_envoi_dp}}</strong> pour <strong>{{client_name}}</strong> ({{client_address}}).</p>
+    <p>À ce jour nous n'avons pas encore reçu de récépissé de dépôt. Pourriez-vous nous le faire parvenir ?</p>
+    <table style="width:100%;background:#FEF3EE;border-radius:8px;padding:14px;margin:16px 0;border-collapse:collapse;">
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Réf. interne</td><td style="padding:5px 12px;font-weight:700;">{{dossier_id}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">N° déclaration</td><td style="padding:5px 12px;font-weight:700;">{{dp_number}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Déposé le</td><td style="padding:5px 12px;">{{date_envoi_dp}}</td></tr>
     </table>
-    <p>Pourriez-vous, s'il vous plaît, nous confirmer la bonne réception de ce dossier et nous faire parvenir le <strong>récépissé de dépôt</strong> dans les meilleurs délais ?</p>
-    <p>Nous restons à votre disposition pour tout renseignement complémentaire.</p>
-    <p style="margin-top:24px;">Veuillez agréer l'expression de nos salutations distinguées,<br><strong>{{company_name}}</strong><br>{{company_email}}</p>
-  </div>
-  <div style="background:#F5F5F0;padding:12px 24px;text-align:center;font-size:11px;color:#A0A090;border-radius:0 0 8px 8px;">
-    Relance automatique — {{date_today}} — {{company_name}}
+    <p>Merci d'avance.</p>
+    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_email}}</span></p>
   </div>
 </div>`,
-    body_text: `Madame, Monsieur,\n\nRelance concernant la DP de {{client_name}} ({{client_address}}) déposée le {{date_envoi_dp}}.\nRéf: {{dossier_id}} — DP n°: {{dp_number}}\n\nMerci de nous faire parvenir le récépissé de dépôt.\n\n{{company_name}} — {{company_email}}`
+    body_text: `Madame, Monsieur,\n\nDP déposée le {{date_envoi_dp}} pour {{client_name}} ({{client_address}}).\nRéf: {{dossier_id}} — N° DP: {{dp_number}}\n\nNous n'avons pas encore reçu le récépissé. Merci de nous le transmettre.\n\n{{company_name}} — {{company_email}}`
   },
   {
     name: 'Relance accord Demande Préalable (J+30)',
-    subject: 'Demande Préalable {{dp_number}} — {{client_name}} — Demande de décision',
+    subject: 'DP {{dp_number}} — {{client_name}} — Demande de décision',
     category: 'mairie',
     variables: JSON.stringify(['client_name','client_address','dp_number','dossier_id','date_envoi_dp','date_today','company_name','company_email']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#6366f1;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:18px;">Eco-Formalités — Suivi Demande Préalable</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités — Suivi déclaration préalable</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
     <p>Madame, Monsieur,</p>
-    <p>Nous nous permettons de revenir vers vous au sujet de la demande préalable de travaux déposée le <strong>{{date_envoi_dp}}</strong> pour notre client <strong>{{client_name}}</strong>, domicilié au <strong>{{client_address}}</strong>.</p>
-    <div style="background:#eef2ff;border-left:4px solid #6366f1;padding:14px 18px;border-radius:0 8px 8px 0;margin:16px 0;">
-      <p style="margin:0;font-size:13px;">Le délai légal d'instruction d'un mois étant désormais écoulé, nous souhaiterions connaître la <strong>décision de votre service</strong> concernant cette demande.</p>
-    </div>
-    <table style="width:100%;background:#F5F5F0;border-radius:8px;padding:16px;margin:16px 0;border-collapse:collapse;">
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Référence interne</td><td style="padding:6px 12px;font-weight:700;">{{dossier_id}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">N° Demande Préalable</td><td style="padding:6px 12px;font-weight:700;">{{dp_number}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Date de dépôt</td><td style="padding:6px 12px;">{{date_envoi_dp}}</td></tr>
-      <tr><td style="padding:6px 12px;color:#6B6B60;font-size:13px;">Client</td><td style="padding:6px 12px;">{{client_name}} — {{client_address}}</td></tr>
+    <p>Je fais suite à la déclaration préalable déposée le <strong>{{date_envoi_dp}}</strong> pour <strong>{{client_name}}</strong>, domicilié au <strong>{{client_address}}</strong>.</p>
+    <p>Le délai légal d'instruction d'un mois est désormais dépassé. Pourriez-vous nous indiquer la décision de votre service, ou nous signaler si des pièces complémentaires sont nécessaires ?</p>
+    <table style="width:100%;background:#FEF3EE;border-radius:8px;padding:14px;margin:16px 0;border-collapse:collapse;">
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Réf. interne</td><td style="padding:5px 12px;font-weight:700;">{{dossier_id}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">N° déclaration</td><td style="padding:5px 12px;font-weight:700;">{{dp_number}}</td></tr>
+      <tr><td style="padding:5px 12px;color:#6B6B60;font-size:13px;">Déposé le</td><td style="padding:5px 12px;">{{date_envoi_dp}}</td></tr>
     </table>
-    <p>Pourriez-vous nous communiquer <strong>l'accord ou l'arrêté de non-opposition</strong> à cette déclaration préalable de travaux, ou nous indiquer si des pièces complémentaires sont nécessaires ?</p>
-    <p style="margin-top:24px;">Veuillez agréer l'expression de nos salutations distinguées,<br><strong>{{company_name}}</strong><br>{{company_email}}</p>
-  </div>
-  <div style="background:#F5F5F0;padding:12px 24px;text-align:center;font-size:11px;color:#A0A090;border-radius:0 0 8px 8px;">
-    Relance automatique — {{date_today}} — {{company_name}}
+    <p>Merci d'avance pour votre retour.</p>
+    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_email}}</span></p>
   </div>
 </div>`,
-    body_text: `Madame, Monsieur,\n\nRelance pour l'accord de la DP de {{client_name}} ({{client_address}}) déposée le {{date_envoi_dp}}.\nRéf: {{dossier_id}} — DP n°: {{dp_number}}\n\nMerci de nous communiquer la décision (accord / non-opposition).\n\n{{company_name}} — {{company_email}}`
+    body_text: `Madame, Monsieur,\n\nSuite à la DP du {{date_envoi_dp}} pour {{client_name}} ({{client_address}}).\nRéf: {{dossier_id}} — N° DP: {{dp_number}}\n\nLe délai d'un mois est dépassé. Merci de nous communiquer la décision.\n\n{{company_name}} — {{company_email}}`
   },
   {
     name: 'Récupération de TVA',
-    subject: 'Dossier TVA — {{client_name}} — Réf. {{dossier_id}}',
+    subject: 'Demande récupération TVA — {{client_name}} — Réf. {{dossier_id}}',
     category: 'administration',
     variables: JSON.stringify(['client_name','client_address','dossier_id','date_today']),
     body_html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#1A1A16;">
-  <div style="background:#1A4A8A;padding:20px 24px;border-radius:8px 8px 0 0;">
-    <h1 style="color:#fff;margin:0;font-size:18px;">Eco-Formalités — Récupération TVA</h1>
+  <div style="background:#E8501A;padding:18px 24px;border-radius:8px 8px 0 0;">
+    <h1 style="color:#fff;margin:0;font-size:18px;font-weight:700;">Eco-Formalités — Récupération TVA</h1>
   </div>
   <div style="background:#fff;padding:28px 24px;border:1px solid #E8E8E0;border-top:none;">
     <p>Madame, Monsieur,</p>
-    <p>Nous vous adressons la demande de récupération de TVA pour notre client <strong>{{client_name}}</strong>, domicilié au <strong>{{client_address}}</strong>.</p>
-    <p>Référence dossier : <strong>{{dossier_id}}</strong> — Date : <strong>{{date_today}}</strong></p>
-    <p>Vous trouverez en pièce jointe les justificatifs nécessaires (facture, attestation de travaux, KBIS si applicable).</p>
-    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br>{{company_email}}</p>
+    <p>Je vous adresse la demande de récupération de TVA pour <strong>{{client_name}}</strong>, domicilié au <strong>{{client_address}}</strong> (réf. <strong>{{dossier_id}}</strong>, {{date_today}}).</p>
+    <p>Les justificatifs sont joints : facture, attestation de travaux et KBIS le cas échéant.</p>
+    <p style="margin-top:24px;">Cordialement,<br><strong>{{company_name}}</strong><br><span style="color:#6B6B60;font-size:12px;">{{company_email}}</span></p>
   </div>
 </div>`,
-    body_text: `Récupération TVA — {{client_name}} ({{client_address}}) — Réf: {{dossier_id}} — {{date_today}}\n\n{{company_name}} — {{company_email}}`
+    body_text: `Madame, Monsieur,\n\nDemande récupération TVA pour {{client_name}} ({{client_address}}) — Réf: {{dossier_id}} — {{date_today}}\nPièces jointes : facture, attestation de travaux.\n\n{{company_name}} — {{company_email}}`
   },
 ];
 
@@ -350,18 +337,25 @@ const DEFAULT_TEMPLATES = [
 
 function seedTemplates(db) {
   const now = new Date().toISOString();
-  db.get('SELECT COUNT(*) as cnt FROM email_templates', [], (err, row) => {
-    if (err || (row && row.cnt > 0)) return;
-    const stmt = db.prepare(
-      `INSERT INTO email_templates (name, subject, category, variables, body_html, body_text, created, updated)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-    );
-    DEFAULT_TEMPLATES.forEach(t => {
-      stmt.run(t.name, t.subject, t.category, t.variables, t.body_html, t.body_text || '', now, now);
+  DEFAULT_TEMPLATES.forEach(t => {
+    db.get('SELECT id FROM email_templates WHERE name = ?', [t.name], (err, row) => {
+      if (err) return;
+      if (row) {
+        // Mettre à jour le contenu du template existant
+        db.run(
+          `UPDATE email_templates SET subject=?, category=?, variables=?, body_html=?, body_text=?, updated=? WHERE name=?`,
+          [t.subject, t.category, t.variables, t.body_html, t.body_text || '', now, t.name]
+        );
+      } else {
+        db.run(
+          `INSERT INTO email_templates (name, subject, category, variables, body_html, body_text, created, updated)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [t.name, t.subject, t.category, t.variables, t.body_html, t.body_text || '', now, now]
+        );
+      }
     });
-    stmt.finalize();
-    console.log(`✅ ${DEFAULT_TEMPLATES.length} templates email insérés`);
   });
+  console.log(`✅ ${DEFAULT_TEMPLATES.length} templates email synchronisés`);
 }
 
 // ── Cron: process scheduled emails every minute ───────────────────────────────
@@ -638,13 +632,20 @@ router.post('/preview', (req, res) => {
   });
 });
 
-// POST /emails/send — envoyer immédiatement
-router.post('/send', async (req, res) => {
-  const {
-    to, to_name, subject, body_html, body_text,
-    template_id, dossier_id, variables: extraVars = {},
-    from_email: reqFromEmail, from_name: reqFromName
-  } = req.body;
+// POST /emails/send — envoyer immédiatement (supporte les pièces jointes via multipart/form-data)
+router.post('/send', upload.array('attachments'), async (req, res) => {
+  const body = req.body;
+  const to          = body.to;
+  const to_name     = body.to_name;
+  const subject     = body.subject;
+  const body_html   = body.body_html;
+  const body_text   = body.body_text;
+  const template_id = body.template_id;
+  const dossier_id  = body.dossier_id;
+  const extraVars   = body.variables ? (typeof body.variables === 'string' ? JSON.parse(body.variables) : body.variables) : {};
+  const reqFromEmail = body.from_email;
+  const reqFromName  = body.from_name;
+  const files = req.files || [];
 
   if (!to) return res.status(400).json({ error: 'Destinataire (to) requis' });
 
@@ -663,7 +664,7 @@ router.post('/send', async (req, res) => {
         smtp_user: senderUser?.smtp_password ? senderEmail : undefined,
         smtp_pass: senderUser?.smtp_password || undefined,
         from_email: senderEmail, from_name: senderName,
-        to, to_name, subject: finalSubject, html: finalHtml, text: finalText,
+        to, to_name, subject: finalSubject, html: finalHtml, text: finalText, attachments: files,
       });
 
       const now = new Date().toISOString();
@@ -787,6 +788,20 @@ router.get('/queue', (req, res) => {
     if (err) return res.status(500).json({ error: err.message });
     res.json(rows);
   });
+});
+
+// PATCH update a pending queued email
+router.patch('/queue/:id', (req, res) => {
+  const { to, to_name, subject, body_html, body_text, scheduled_at } = req.body;
+  req.db.run(
+    `UPDATE email_queue SET to_email=COALESCE(?,to_email), to_name=COALESCE(?,to_name), subject=COALESCE(?,subject), body_html=COALESCE(?,body_html), body_text=COALESCE(?,body_text), scheduled_at=COALESCE(?,scheduled_at) WHERE id=? AND status='pending'`,
+    [to||null, to_name||null, subject||null, body_html||null, body_text||null, scheduled_at||null, req.params.id],
+    function (err) {
+      if (err) return res.status(500).json({ error: err.message });
+      if (this.changes === 0) return res.status(400).json({ error: 'Email non trouvé ou déjà envoyé' });
+      res.json({ message: 'Email mis à jour' });
+    }
+  );
 });
 
 // DELETE cancel a queued email

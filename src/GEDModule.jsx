@@ -20,7 +20,7 @@ export const DOC_CATEGORIES = [
   { key: 'recepisse',     label: 'Récépissé de dépôt', icon: '📨', color: '#059669', bg: '#ecfdf5', extractDP: true },
   { key: 'kbis',          label: 'KBIS',              icon: '🏢', color: '#1A4A8A', bg: '#EEF3FD', extractKbis: true },
   { key: 'raccordement',  label: 'Raccordement',       icon: '⚡', color: '#059669', bg: '#ecfdf5' },
-  { key: 'consuel',       label: 'CONSUEL',            icon: '✅', color: '#7c3aed', bg: '#f5f3ff' },
+  { key: 'consuel',       label: 'Consuel',            icon: '✅', color: '#7c3aed', bg: '#f5f3ff' },
   { key: 'devis',         label: 'Devis',              icon: '📋', color: '#E8501A', bg: '#FEF0EB' },
   { key: 'facture',       label: 'Facture',            icon: '🧾', color: '#d97706', bg: '#fffbeb' },
   { key: 'tva',           label: 'Récupération TVA',   icon: '💶', color: '#0891b2', bg: '#ecfeff' },

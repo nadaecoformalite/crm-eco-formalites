@@ -964,6 +964,32 @@ async function findGnau(ville, epciInfo, codePostal) {
     }
   }
 
+  // ── Étape 0b : scan de toutes les URLs candidates EPCI (Operis gnau1-49, Geosphere, SIRAP…) ──
+  if (epciName) {
+    const candidateUrls = generateEpciUrls(epciName);
+    console.log(`   Scan ${candidateUrls.length} URLs candidates pour "${epciName}"…`);
+    const scanResults = await scanAllUrls(candidateUrls);
+    if (scanResults.length) {
+      console.log(`   TROUVE (scan EPCI) : ${scanResults[0]}`);
+      if (epciCode) setCachedGnau(epciCode, epciName, scanResults, 'scan_epci');
+      return { source: 'scan_epci', interco: epciName, urls: scanResults };
+    }
+  }
+
+  // ── Étape 0c : scan des URLs candidates pour la ville elle-même ──
+  {
+    const villeUrls = new Set(generateUrls(ville));
+    if (cp) generateUrls(cp + '-' + ville).forEach(u => villeUrls.add(u));
+    const deduped = [...villeUrls];
+    console.log(`   Scan ${deduped.length} URLs candidates pour la ville "${ville}"…`);
+    const scanVille = await scanAllUrls(deduped);
+    if (scanVille.length) {
+      console.log(`   TROUVE (scan ville) : ${scanVille[0]}`);
+      if (epciCode) setCachedGnau(epciCode, epciName, scanVille, 'scan_ville');
+      return { source: 'scan_ville', urls: scanVille };
+    }
+  }
+
   // ── Étape 1 : Google → gnau "code_postal" "ville" ──
   const q1 = `gnau ${cp ? '"' + cp + '"' : ''} "${ville}"`;
   const step1 = await googleSearchGnau(q1);
@@ -1054,7 +1080,7 @@ async function searchMairieGoogle(ville, codep) {
 
   try {
     const query = `mairie ${ville}${codep ? ' ' + codep : ''}`;
-    const resp = await fetch('https://places.googleapis.coRm/v1/places:searchText', {
+    const resp = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

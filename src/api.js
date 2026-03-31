@@ -206,8 +206,28 @@ export const previewEmail = async ({ template_id, dossier_id, variables = {} }) 
   catch (err) { console.error('previewEmail:', err); throw err; }
 };
 
-export const sendEmail = async ({ to, to_name, subject, body_html, body_text, template_id, dossier_id, variables = {}, from_email, from_name }) => {
-  try { return await request('/emails/send', { method: 'POST', body: JSON.stringify({ to, to_name, subject, body_html, body_text, template_id, dossier_id, variables, from_email, from_name }) }); }
+export const sendEmail = async ({ to, to_name, subject, body_html, body_text, template_id, dossier_id, variables = {}, from_email, from_name, attachments = [] }) => {
+  try {
+    if (attachments.length > 0) {
+      const fd = new FormData();
+      if (to)          fd.append('to', to);
+      if (to_name)     fd.append('to_name', to_name);
+      if (subject)     fd.append('subject', subject);
+      if (body_html)   fd.append('body_html', body_html);
+      if (body_text)   fd.append('body_text', body_text);
+      if (template_id) fd.append('template_id', template_id);
+      if (dossier_id)  fd.append('dossier_id', dossier_id);
+      if (from_email)  fd.append('from_email', from_email);
+      if (from_name)   fd.append('from_name', from_name);
+      fd.append('variables', JSON.stringify(variables));
+      attachments.forEach(f => fd.append('attachments', f, f.name));
+      const token = getToken();
+      const res = await fetch(`${API_URL}/emails/send`, { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: fd });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || res.statusText); }
+      return res.json();
+    }
+    return await request('/emails/send', { method: 'POST', body: JSON.stringify({ to, to_name, subject, body_html, body_text, template_id, dossier_id, variables, from_email, from_name }) });
+  }
   catch (err) { console.error('sendEmail:', err); throw err; }
 };
 
@@ -228,6 +248,11 @@ export const getEmailQueue = async (filters = {}) => {
 export const cancelQueuedEmail = async (id) => {
   try { return await request(`/emails/queue/${id}`, { method: 'DELETE' }); }
   catch (err) { console.error('cancelQueuedEmail:', err); throw err; }
+};
+
+export const updateQueuedEmail = async (id, data) => {
+  try { return await request(`/emails/queue/${id}`, { method: 'PATCH', body: JSON.stringify(data) }); }
+  catch (err) { console.error('updateQueuedEmail:', err); throw err; }
 };
 
 // ── Email Log ─────────────────────────────────────────────────────────────────

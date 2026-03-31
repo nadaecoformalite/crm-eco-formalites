@@ -19,7 +19,7 @@ const DOSSIERS = [
   {
     id: "DOS-2024-001", client: "Martin Dupont", email: "martin@example.com", phone: "06 12 34 56 78",
     address: "12 rue des Lilas, 75011 Paris", dp_number: "DP 075 111 24 00001",
-    works: [{ type: "PAC", dossier_type: "Demande Prealable Raccordement" }, { type: "ITE", dossier_type: "CONSUEL" }],
+    works: [{ type: "PAC", dossier_type: "Demande Prealable Raccordement" }, { type: "ITE", dossier_type: "Consuel" }],
     status: "en_cours", assignee: "Sarah", created: "2024-11-15", updated: "2024-12-01", paid: false, amount: 1200,
     docs: [{ name: "Devis_Martin.pdf", size: "245 KB", date: "2024-11-15" }],
     notes: [{ author: "Sarah", date: "2024-11-20", text: "Dossier en attente de validation EDF." }],
