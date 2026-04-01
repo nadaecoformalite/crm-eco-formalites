@@ -108,7 +108,30 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent, initialTempla
   const [loading, setLoading] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
 
-  // Le dossier fournit uniquement les variables (DP, client...) — pas le destinataire
+  // ── Auto-remplissage email mairie pour templates J+6 / J+30 ────────────────
+  const isRelanceMairie = (tid) => {
+    const tpl = templates.find(t => String(t.id) === String(tid));
+    return tpl && (tpl.name.includes('J+6') || tpl.name.includes('J+30'));
+  };
+
+  const getMairieEmail = (did) => {
+    const d = dossiers.find(dd => String(dd.id) === String(did));
+    if (!d) return null;
+    if (d.mairie_email) return { email: d.mairie_email, source: 'mairie_email' };
+    const ur = d.urbanisme_result;
+    if (ur?.email_urbanisme) return { email: ur.email_urbanisme, source: 'urbanisme' };
+    if (ur?.mairie?.email)   return { email: ur.mairie.email,   source: 'urbanisme' };
+    return null;
+  };
+
+  useEffect(() => {
+    if (!isRelanceMairie(templateId) || !dossierId) return;
+    const found = getMairieEmail(dossierId);
+    if (found) {
+      setTo(found.email);
+      setToName('Service Urbanisme');
+    }
+  }, [templateId, dossierId]);
 
   const dossierQ = dossierSearch.toLowerCase();
   const filteredDossiers = (dossiers || []).filter(dd => {
@@ -270,7 +293,14 @@ function ComposeModal({ templates, dossiers = [], onClose, onSent, initialTempla
                 )}
               </div>
               <div className="fg">
-                <label className="lbl" style={{ color:'var(--or)' }}>Destinataire *</label>
+                <label className="lbl" style={{ color:'var(--or)', display:'flex', alignItems:'center', gap:6 }}>
+                  Destinataire *
+                  {isRelanceMairie(templateId) && dossierId && getMairieEmail(dossierId) && (
+                    <span style={{ fontSize:11, fontWeight:600, background:'var(--or)', color:'#fff', borderRadius:4, padding:'1px 6px', letterSpacing:0.3 }}>
+                      mairie auto
+                    </span>
+                  )}
+                </label>
                 <input autoComplete="nope" name="email-destinataire" value={to} onChange={e => setTo(e.target.value)} placeholder="email@exemple.fr" />
               </div>
             </div>

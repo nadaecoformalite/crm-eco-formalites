@@ -421,9 +421,18 @@ function startEmailCron(db) {
     });
   }
 
-  // ── Helper : résoudre l'email mairie (champ dédié → scan commentaires) ──
+  // ── Helper : résoudre l'email mairie (champ dédié → urbanisme_result → commentaires) ──
   function resolveMairieEmail(dossier) {
     if (dossier.mairie_email) return dossier.mairie_email;
+    // Email issu du lookup urbanisme (mairie trouvée automatiquement)
+    try {
+      const ur = typeof dossier.urbanisme_result === 'string'
+        ? JSON.parse(dossier.urbanisme_result)
+        : dossier.urbanisme_result;
+      if (ur?.email_urbanisme) return ur.email_urbanisme;
+      if (ur?.mairie?.email)   return ur.mairie.email;
+    } catch { /* ignore */ }
+    // Fallback : scan des commentaires
     try {
       const comments = JSON.parse(dossier.comments || '[]');
       const re = /[\w.+%-]+@[\w-]+\.[a-z]{2,}/i;
